@@ -174,6 +174,8 @@ export default function DatasetPage() {
 
   // ── Generate & Download ───────────────────────────────────────────────────
 
+  const [generatedFile, setGeneratedFile] = useState<{url: string, filename: string, blob: Blob} | null>(null);
+
   const handleGenerate = async () => {
     if (labeledCount === 0) {
       showToast('No labeled images found for this project', 'error');
@@ -185,6 +187,7 @@ export default function DatasetPage() {
     }
 
     setIsGenerating(true);
+    setGeneratedFile(null);
     try {
       showToast('Generating dataset (this may take a while)...', 'success');
 
@@ -203,22 +206,61 @@ export default function DatasetPage() {
         responseType: 'blob',
       });
 
-      // Trigger download
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `dataset_${projectInfo?.name?.replace(/\s+/g, '_') || projectId}_${Date.now()}.zip`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      showToast('Dataset exported successfully!', 'success');
+      const blob = new Blob([res.data]);
+      const url = window.URL.createObjectURL(blob);
+      const filename = `dataset_${projectInfo?.name?.replace(/\s+/g, '_') || projectId}_${Date.now()}.zip`;
+      
+      setGeneratedFile({ url, filename, blob });
+      showToast('Dataset generated! Click Download to save it.', 'success');
     } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      showToast(typeof detail === 'string' ? detail : 'Failed to generate dataset', 'error');
+      let errorMsg = 'Failed to generate dataset';
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          if (json.detail) {
+            errorMsg = typeof json.detail === 'string' ? json.detail : JSON.stringify(json.detail);
+          }
+        } catch (e) {
+          // Keep default errorMsg
+        }
+      } else if (err.response?.data?.detail) {
+        const detail = err.response.data.detail;
+        errorMsg = typeof detail === 'string' ? detail : JSON.stringify(detail);
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      showToast(typeof errorMsg === 'string' ? errorMsg : 'Failed to generate dataset', 'error');
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleDownloadClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if ('showSaveFilePicker' in window && generatedFile) {
+      e.preventDefault();
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: generatedFile.filename,
+          types: [{
+            description: 'ZIP Archive',
+            accept: {'application/zip': ['.zip']},
+          }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(generatedFile.blob);
+        await writable.close();
+        showToast('Dataset saved successfully!', 'success');
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+           console.error(err);
+           // Fallback if File System API fails for some reason
+           const link = document.createElement('a');
+           link.href = generatedFile.url;
+           link.download = generatedFile.filename;
+           link.click();
+        }
+      }
     }
   };
 
@@ -534,27 +576,48 @@ export default function DatasetPage() {
             )}
           </div>
 
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating || labeledCount === 0 || (config.split_enabled && !splitValid)}
-            className={`flex items-center gap-2 px-6 py-3 rounded font-bold text-white text-base transition ${
-              isGenerating || labeledCount === 0 || (config.split_enabled && !splitValid)
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
-            {isGenerating ? (
+          <div className="flex gap-3">
+            {generatedFile ? (
               <>
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Generating...
+                <button
+                  onClick={() => setGeneratedFile(null)}
+                  className="px-4 py-3 rounded font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-300 transition"
+                >
+                  Clear
+                </button>
+                <a
+                  href={generatedFile.url}
+                  download={generatedFile.filename}
+                  onClick={handleDownloadClick}
+                  className="flex items-center gap-2 px-6 py-3 rounded font-bold text-white text-base bg-green-600 hover:bg-green-700 transition"
+                >
+                  ⬇️ Save / Download ZIP
+                </a>
               </>
             ) : (
-              <>📦 Generate &amp; Download</>
+              <button
+                onClick={handleGenerate}
+                disabled={isGenerating || labeledCount === 0 || (config.split_enabled && !splitValid)}
+                className={`flex items-center gap-2 px-6 py-3 rounded font-bold text-white text-base transition ${
+                  isGenerating || labeledCount === 0 || (config.split_enabled && !splitValid)
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {isGenerating ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Generating...
+                  </>
+                ) : (
+                  <>📦 Generate Dataset</>
+                )}
+              </button>
             )}
-          </button>
+          </div>
         </div>
 
         {labeledCount === 0 && !isLoadingStats && (

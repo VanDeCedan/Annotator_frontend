@@ -232,7 +232,28 @@ export function AnnotatorCanvas({
                 ctx.fill();
                 ctx.stroke();
 
-                // Draw handles for selected OBB
+                // Always draw rotation indicator (wheel) so orientation is instantly visible
+                const rotDist = 30 / scale;
+                const wheelSize = 5 / scale;
+                
+                ctx.save();
+                ctx.setLineDash([]);
+                ctx.strokeStyle = color;
+                ctx.fillStyle = isSelected ? '#ffffff' : color;
+                ctx.lineWidth = 1.5 / scale;
+
+                ctx.beginPath();
+                ctx.moveTo(0, -parsed.h / 2);
+                ctx.lineTo(0, -parsed.h / 2 - rotDist);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(0, -parsed.h / 2 - rotDist, wheelSize, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+
+                // Draw resize handles for selected OBB
                 if (isSelected) {
                     ctx.setLineDash([]);
                     const handleSize = 6 / scale;
@@ -256,18 +277,6 @@ export function AnnotatorCanvas({
                     drawHandle(0, hh); // b
                     drawHandle(-hw, 0); // l
                     drawHandle(hw, 0); // r
-
-                    // Rotate handle
-                    const rotDist = 30 / scale;
-                    ctx.beginPath();
-                    ctx.moveTo(0, -hh);
-                    ctx.lineTo(0, -hh - rotDist);
-                    ctx.stroke();
-
-                    ctx.beginPath();
-                    ctx.arc(0, -hh - rotDist, handleSize, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
                 }
                 ctx.restore();
                 
