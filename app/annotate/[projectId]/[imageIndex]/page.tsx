@@ -74,6 +74,8 @@ export default function AnnotatePage() {
   } = useAnnotatorState(projectId, imageNames, initialIndex);
 
   const [imageUrl, setImageUrl] = useState('');
+  const [rotationStep, setRotationStep] = useState(90);
+  const [autoAdaptBox, setAutoAdaptBox] = useState(true);
 
   useEffect(() => {
     if (!currentImageName) return;
@@ -147,6 +149,8 @@ export default function AnnotatePage() {
               classes={classes}
               selectedLabelIndex={selectedLabelIndex}
               setSelectedLabelIndex={setSelectedLabelIndex}
+              rotationStep={rotationStep}
+              autoAdaptBox={autoAdaptBox}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-[#EAEEF5]">
@@ -207,29 +211,60 @@ export default function AnnotatePage() {
           </div>
         </div>
 
-        {/* Right panel */}
-        {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'Classification') && (
-          <ClassPanel
-            classes={classes}
-            activeClassCode={activeClassCode}
-            onSelectClass={(code) => {
-              setActiveClassCode(code);
-              // If a box is selected, change its class!
-              if (selectedLabelIndex !== null) {
-                setLabels(prev => {
-                  const newLabels = [...prev];
-                  newLabels[selectedLabelIndex] = { ...newLabels[selectedLabelIndex], class_code: code };
-                  return newLabels;
-                });
-              }
-            }}
-            projectType={projectType}
-            selectedLabelIndex={selectedLabelIndex}
-          />
-        )}
-        {projectType === 'Ocr' && (
-          <OCRPanel value={ocrValue} onChange={setOcrValue} />
-        )}
+        {/* Right panel wrapper */}
+        <div className="flex flex-col h-full">
+          {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'Classification') && (
+            <ClassPanel
+              classes={classes}
+              activeClassCode={activeClassCode}
+              onSelectClass={(code) => {
+                setActiveClassCode(code);
+                // If a box is selected, change its class!
+                if (selectedLabelIndex !== null) {
+                  setLabels(prev => {
+                    const newLabels = [...prev];
+                    newLabels[selectedLabelIndex] = { ...newLabels[selectedLabelIndex], class_code: code };
+                    return newLabels;
+                  });
+                }
+              }}
+              projectType={projectType}
+              selectedLabelIndex={selectedLabelIndex}
+              labels={labels}
+            />
+          )}
+
+          {/* Rotation step controls for Yolo OBB */}
+          {projectType === 'Yolo OBB' && (
+            <div className="w-60 bg-white border-l border-gray-300 p-4 border-t border-gray-200 shadow-inner">
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
+                Arrow Key Rotation Step
+              </label>
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  type="number"
+                  value={rotationStep}
+                  onChange={(e) => setRotationStep(Number(e.target.value) || 0)}
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-black focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-500 font-medium">deg</span>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoAdaptBox}
+                  onChange={(e) => setAutoAdaptBox(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700 font-medium">Auto-adapt box size</span>
+              </label>
+            </div>
+          )}
+
+          {projectType === 'Ocr' && (
+            <OCRPanel value={ocrValue} onChange={setOcrValue} />
+          )}
+        </div>
       </div>
     </div>
   );

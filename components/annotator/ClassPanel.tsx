@@ -13,9 +13,10 @@ interface ClassPanelProps {
   onSelectClass: (code: number) => void;
   projectType: string;
   selectedLabelIndex?: number | null;
+  labels?: { class_code: number }[];
 }
 
-export function ClassPanel({ classes, activeClassCode, onSelectClass, projectType, selectedLabelIndex }: ClassPanelProps) {
+export function ClassPanel({ classes, activeClassCode, onSelectClass, projectType, selectedLabelIndex, labels = [] }: ClassPanelProps) {
   return (
     <div className="w-60 bg-white border-l border-gray-300 flex flex-col h-full">
       {/* Header */}
@@ -37,6 +38,9 @@ export function ClassPanel({ classes, activeClassCode, onSelectClass, projectTyp
         ) : (
           classes.map((cls) => {
             const isActive = activeClassCode === cls.code;
+            const count = labels.filter(l => l.class_code === cls.code).length;
+            const labelText = count > 0 ? `${cls.label} (${count})` : cls.label;
+
             return (
               <button
                 key={cls.code}
@@ -49,7 +53,7 @@ export function ClassPanel({ classes, activeClassCode, onSelectClass, projectTyp
               >
                 <div className="w-4 h-4 rounded flex-shrink-0 border border-black/10" style={{ backgroundColor: cls.color }} />
                 <span className={`text-sm font-medium flex-1 truncate ${isActive ? 'text-black' : 'text-gray-700'}`}>
-                  {cls.label}
+                  {labelText}
                 </span>
                 <span className="text-xs text-gray-500 bg-gray-100 border rounded px-1.5 py-0.5 font-mono flex-shrink-0">
                   {cls.code}

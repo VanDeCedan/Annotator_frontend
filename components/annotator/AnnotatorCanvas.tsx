@@ -16,6 +16,8 @@ interface AnnotatorCanvasProps {
     classes: {code: number, color: string}[];
     selectedLabelIndex?: number | null;
     setSelectedLabelIndex?: (index: number | null) => void;
+    rotationStep?: number;
+    autoAdaptBox?: boolean;
 }
 
 // Helper removed
@@ -79,7 +81,9 @@ export function AnnotatorCanvas({
     activeClassCode,
     classes,
     selectedLabelIndex = null,
-    setSelectedLabelIndex
+    setSelectedLabelIndex,
+    rotationStep = 5,
+    autoAdaptBox = true
 }: AnnotatorCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -108,6 +112,11 @@ export function AnnotatorCanvas({
         const handleKeyDown = (e: KeyboardEvent) => {
             if (selectedLabelIndex === null) return;
             
+            // Do not handle key events if user is typing in an input field
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+                return;
+            }
+            
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 const newLabels = [...labels];
                 newLabels.splice(selectedLabelIndex, 1);
@@ -125,9 +134,19 @@ export function AnnotatorCanvas({
                 if (coords.length === 8) {
                     const parsed = parseOBBCoords(coords, image.width, image.height);
                     if (parsed) {
-                        const angleDelta = 5 * (Math.PI / 180);
+                        const angleDelta = rotationStep * (Math.PI / 180);
                         const newAngle = e.key === 'ArrowRight' ? parsed.angle + angleDelta : parsed.angle - angleDelta;
-                        const nbox = { ...parsed, angle: newAngle };
+                        
+                        let newW = parsed.w;
+                        let newH = parsed.h;
+                        
+                        // Auto-adapt box size for 90-degree increments
+                        if (autoAdaptBox && rotationStep % 90 === 0 && (Math.abs(rotationStep) / 90) % 2 === 1) {
+                            newW = parsed.h;
+                            newH = parsed.w;
+                        }
+                        
+                        const nbox = { ...parsed, angle: newAngle, w: newW, h: newH };
                         const corners = getOBBCorners(nbox);
                         const norm = corners.map(pt => `${pt.x / image.width} ${pt.y / image.height}`);
                         lbl.coordinates = norm.join(' ');
@@ -138,7 +157,7 @@ export function AnnotatorCanvas({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedLabelIndex, labels, onLabelsChange, setSelectedLabelIndex, projectType, image]);
+    }, [selectedLabelIndex, labels, onLabelsChange, setSelectedLabelIndex, projectType, image, rotationStep, autoAdaptBox]);
 
     useEffect(() => {
         const img = new Image();
