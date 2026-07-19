@@ -23,13 +23,7 @@ export default function HomePage() {
       href: '/classes',
       color: 'bg-green-50 hover:bg-green-100 border-green-200',
     },
-    {
-      title: 'Pre-labels',
-      description: 'Upload AI-generated pre-labels to speed up your annotation workflow.',
-      icon: '⚡',
-      href: '/prelabels',
-      color: 'bg-yellow-50 hover:bg-yellow-100 border-yellow-200',
-    },
+
     {
       title: 'Annotator',
       description: 'Draw bounding boxes and tag classes directly on your images.',

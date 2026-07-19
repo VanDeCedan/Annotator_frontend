@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import api from '@/lib/api';
@@ -16,19 +16,48 @@ export default function AnnotatorSetupPage() {
   
   const [projectInfo, setProjectInfo] = useState<any>(null);
   const [stats, setStats] = useState({ labeled: 0 });
+  const [annotatedImages, setAnnotatedImages] = useState<string[]>([]);
+  const [unannotatedImages, setUnannotatedImages] = useState<string[]>([]);
+  const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(false);
+
   const { user, showToast } = useAppStore();
 
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingPrelabels, setIsUploadingPrelabels] = useState(false);
+
+  const loadWorkspaceData = useCallback(async (id: string) => {
+    setIsWorkspaceLoading(true);
+    try {
+      // Fetch all images in the local workspace
+      const imagesRes = await api.get(`/projects/${id}/images/local_workspace`);
+      const allImages: string[] = imagesRes.data.image_names || [];
+
+      // Fetch progress
+      const progressRes = await api.get(`/projects/${id}/labels/progress/`);
+      const labeledImages: string[] = progressRes.data.labeled_images || [];
+      
+      setStats({ labeled: progressRes.data.labeled_count });
+
+      const annotated = allImages.filter(img => labeledImages.includes(img));
+      const unannotated = allImages.filter(img => !labeledImages.includes(img));
+      
+      setAnnotatedImages(annotated);
+      setUnannotatedImages(unannotated);
+    } catch (err) {
+      console.error('Failed to load workspace data', err);
+    } finally {
+      setIsWorkspaceLoading(false);
+    }
+  }, []);
   
   useEffect(() => {
     if (projectId) {
       setSelectedProjectId(projectId);
       loadProject(projectId);
-      loadStats(projectId);
+      loadWorkspaceData(projectId);
     }
     loadAllProjects();
-  }, [projectId]);
+  }, [projectId, loadWorkspaceData]);
 
   const loadAllProjects = async () => {
     try {
@@ -45,13 +74,6 @@ export default function AnnotatorSetupPage() {
     } catch {}
   };
 
-  const loadStats = async (id: string) => {
-    try {
-      const res = await api.get(`/projects/${id}/labels/progress/`);
-      setStats({ labeled: res.data.labeled_count });
-    } catch {}
-  };
-
   const handleProjectSelect = (id: string) => {
     setSelectedProjectId(id);
     if (id) {
@@ -61,38 +83,67 @@ export default function AnnotatorSetupPage() {
     }
   };
 
+  const handleStartAnnotation = (mode: 'annotated' | 'unannotated') => {
+    router.push(`/annotate/${projectId}/0?mode=${mode}`);
+  };
+
   const handleUploadImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setIsUploading(true);
-    const formData = new FormData();
-    Array.from(e.target.files).forEach((file) => formData.append('files', file));
+    
+    const filesArray = Array.from(e.target.files);
+    const chunkSize = 500;
+
     try {
-      const res = await api.post(`/projects/${projectId}/images/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const { session_id, image_names } = res.data;
-      const imgQuery = image_names.join(',');
-      router.push(`/annotate/${projectId}/0?session=${session_id}&images=${encodeURIComponent(imgQuery)}`);
-      showToast('Images uploaded. Starting session.', 'success');
-    } catch {
-      showToast('Failed to upload images', 'error');
+      for (let i = 0; i < filesArray.length; i += chunkSize) {
+        const chunk = filesArray.slice(i, i + chunkSize);
+        const formData = new FormData();
+        chunk.forEach((file) => formData.append('files', file));
+
+        await api.post(`/projects/${projectId}/images/upload`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
+      showToast(`Successfully added ${filesArray.length} images to project workspace`, 'success');
+      loadWorkspaceData(projectId!);
+    } catch (err: any) {
+      showToast('Failed to upload some images', 'error');
     } finally {
       setIsUploading(false);
+      if (e.target) e.target.value = '';
     }
   };
 
   const handleUploadPrelabels = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setIsUploadingPrelabels(true);
-    const formData = new FormData();
-    Array.from(e.target.files).forEach((file) => formData.append('files', file));
+    const filesArray = Array.from(e.target.files);
+    const chunkSize = 500; // FastAPI limit is 1000
+
     try {
-      await api.post(`/projects/${projectId}/prelabels`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      showToast('Prelabels uploaded successfully', 'success');
+      for (let i = 0; i < filesArray.length; i += chunkSize) {
+        const chunk = filesArray.slice(i, i + chunkSize);
+        const formData = new FormData();
+        chunk.forEach((file) => formData.append('files', file));
+
+        await api.post(`/projects/${projectId}/prelabels`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
+      showToast(`Successfully uploaded ${filesArray.length} prelabels`, 'success');
     } catch (err: any) {
-      showToast('Failed to upload prelabels', 'error');
+      console.error("Upload Prelabels Error:", err.response?.data);
+      if (err.response?.data?.detail?.invalid_files) {
+        const invalidFiles = err.response.data.detail.invalid_files;
+        const msg = `Validation failed: ${invalidFiles.slice(0, 3).join(', ')}${invalidFiles.length > 3 ? '...' : ''}`;
+        showToast(msg, 'error');
+      } else if (err.response?.data?.detail && typeof err.response.data.detail === 'string') {
+        showToast(err.response.data.detail, 'error');
+      } else if (err.response?.data?.detail?.[0]?.msg) {
+        showToast(err.response.data.detail[0].msg, 'error');
+      } else {
+        showToast('Failed to upload prelabels', 'error');
+      }
     } finally {
       setIsUploadingPrelabels(false);
       if (e.target) e.target.value = '';
@@ -109,12 +160,23 @@ export default function AnnotatorSetupPage() {
     }
   };
 
+  const handleClearWorkspace = async () => {
+    if (!confirm('Are you sure you want to clear all images from this project workspace? Labels will NOT be deleted.')) return;
+    try {
+      await api.delete(`/projects/${projectId}/images/local_workspace`);
+      showToast('Workspace images cleared', 'success');
+      loadWorkspaceData(projectId!);
+    } catch {
+      showToast('Failed to clear workspace', 'error');
+    }
+  };
+
   if (!projectInfo) {
     return (
       <div className="text-black max-w-3xl mx-auto py-10">
         <div className="bg-white border rounded shadow-md p-8 text-center">
           <h2 className="text-2xl font-bold mb-2">Select a Project</h2>
-          <p className="text-gray-500 mb-6">Choose a project to start annotating images</p>
+          <p className="text-gray-500 mb-6">Choose a project to manage its local workspace</p>
           <div className="max-w-md mx-auto text-left">
             <label className="block text-sm font-medium text-black mb-1">Project</label>
             <select
@@ -134,7 +196,7 @@ export default function AnnotatorSetupPage() {
   }
 
   return (
-    <div className="text-black max-w-3xl">
+    <div className="text-black max-w-4xl mx-auto pb-10">
       {/* Back */}
       <button onClick={() => router.push(`/annotator`)} className="text-sm text-gray-500 hover:text-black mb-4 inline-flex items-center gap-1">
         ← Back to Projects
@@ -148,7 +210,7 @@ export default function AnnotatorSetupPage() {
             <div className="flex items-center gap-3 mt-1">
               <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">{projectInfo.type}</span>
               <span className="text-sm text-gray-600">
-                Labeled images: <strong className="text-black">{stats.labeled}</strong>
+                Total Labeled: <strong className="text-black">{stats.labeled}</strong>
               </span>
             </div>
           </div>
@@ -163,46 +225,111 @@ export default function AnnotatorSetupPage() {
         </div>
       </div>
 
-      {/* Action 1: Upload & Annotate */}
-      <div className="bg-white border rounded shadow-md p-6 mb-4">
-        <h3 className="text-base font-bold mb-1">Start Annotation Session</h3>
-        <p className="text-sm text-gray-500 mb-4">
-          Upload a batch of images to start annotating immediately. Images are temporarily stored and deleted after the session.
-        </p>
-
-        <label className={`flex flex-col items-center justify-center w-full h-44 border-2 border-dashed border-gray-300 rounded cursor-pointer bg-gray-50 hover:bg-gray-100 transition ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-          <div className="flex flex-col items-center justify-center py-6">
-            <svg className="w-10 h-10 mb-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            <p className="mb-1 text-sm text-gray-600">
-              <span className="font-bold text-black">Click to upload</span> or drag and drop
-            </p>
-            <p className="text-xs text-gray-400">JPG, PNG or WEBP — multiple files allowed</p>
+      {/* Workspace Dashboard */}
+      <div className="bg-white border rounded shadow-md p-6 mb-6">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="text-lg font-bold">Local Workspace</h3>
+            <p className="text-sm text-gray-500">Pick up where you left off or correct previous annotations.</p>
           </div>
-          <input type="file" multiple accept="image/*" className="hidden" onChange={handleUploadImages} disabled={isUploading} />
-        </label>
-        {isUploading && <p className="text-center text-blue-600 mt-2 animate-pulse text-sm">Uploading and initializing session...</p>}
+          <Button variant="danger" onClick={handleClearWorkspace} disabled={annotatedImages.length === 0 && unannotatedImages.length === 0}>
+            Clear Workspace
+          </Button>
+        </div>
+
+        {isWorkspaceLoading ? (
+          <div className="flex justify-center items-center h-32">
+            <svg className="animate-spin h-8 w-8 text-blue-500" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div 
+              onClick={() => unannotatedImages.length > 0 && handleStartAnnotation('unannotated')}
+              className={`border rounded-xl p-6 flex flex-col items-center text-center transition-all ${
+                unannotatedImages.length > 0 
+                  ? 'cursor-pointer hover:shadow-md hover:border-blue-300 hover:-translate-y-1 bg-white' 
+                  : 'bg-gray-50 opacity-60 cursor-not-allowed'
+              }`}
+            >
+              <div className="w-14 h-14 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mb-3">
+                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </div>
+              <h4 className="text-lg font-bold mb-1">Unannotated</h4>
+              <p className="text-gray-500 text-sm mb-3">Continue labeling new images</p>
+              <span className="inline-block bg-blue-100 text-blue-800 text-xl font-bold px-4 py-1 rounded-full">
+                {unannotatedImages.length}
+              </span>
+            </div>
+
+            <div 
+              onClick={() => annotatedImages.length > 0 && handleStartAnnotation('annotated')}
+              className={`border rounded-xl p-6 flex flex-col items-center text-center transition-all ${
+                annotatedImages.length > 0 
+                  ? 'cursor-pointer hover:shadow-md hover:border-green-300 hover:-translate-y-1 bg-white' 
+                  : 'bg-gray-50 opacity-60 cursor-not-allowed'
+              }`}
+            >
+              <div className="w-14 h-14 bg-green-50 text-green-500 rounded-full flex items-center justify-center mb-3">
+                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h4 className="text-lg font-bold mb-1">Annotated</h4>
+              <p className="text-gray-500 text-sm mb-3">Review or correct existing labels</p>
+              <span className="inline-block bg-green-100 text-green-800 text-xl font-bold px-4 py-1 rounded-full">
+                {annotatedImages.length}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Action 2: Prelabels (admin only) */}
-      {user?.role === 'admin' && (
-        <div className="bg-white border rounded shadow-md p-6 mb-4">
-          <h3 className="text-base font-bold mb-1">Prelabels</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Add More Images */}
+        <div className="bg-white border rounded shadow-md p-6">
+          <h3 className="text-base font-bold mb-1">Add Images to Workspace</h3>
           <p className="text-sm text-gray-500 mb-4">
-            Upload .txt files matching your image names to pre-populate annotations and speed up the workflow.
+            Upload images to expand your local workspace. They will be sorted automatically.
           </p>
-          <div className="flex items-center gap-3">
-            <label className="relative">
-              <Button disabled={isUploadingPrelabels} asChild>
-                <span>{isUploadingPrelabels ? 'Uploading...' : 'Upload Prelabels (.txt)'}</span>
-              </Button>
-              <input type="file" multiple accept=".txt" className="hidden" onChange={handleUploadPrelabels} disabled={isUploadingPrelabels} />
-            </label>
-            <Button variant="danger" onClick={handleDeletePrelabels}>Clear All Prelabels</Button>
-          </div>
+
+          <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded cursor-pointer bg-gray-50 hover:bg-gray-100 transition ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className="flex flex-col items-center justify-center py-4 text-center">
+              <svg className="w-8 h-8 mb-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              <p className="text-sm text-gray-600">
+                <span className="font-bold text-black">Click to add images</span>
+              </p>
+            </div>
+            <input type="file" multiple accept="image/*" className="hidden" onChange={handleUploadImages} disabled={isUploading} />
+          </label>
+          {isUploading && <p className="text-center text-blue-600 mt-2 animate-pulse text-sm">Uploading and sorting...</p>}
         </div>
-      )}
+
+        {/* Prelabels */}
+        {user?.role === 'admin' && (
+          <div className="bg-white border rounded shadow-md p-6">
+            <h3 className="text-base font-bold mb-1">Prelabels</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Upload .txt files to pre-populate annotations.
+            </p>
+            <div className="flex flex-col gap-3">
+              <label className="relative block">
+                <Button disabled={isUploadingPrelabels} className="w-full" asChild>
+                  <span>{isUploadingPrelabels ? 'Uploading...' : 'Upload Prelabels (.txt)'}</span>
+                </Button>
+                <input type="file" multiple accept=".txt" className="hidden" onChange={handleUploadPrelabels} disabled={isUploadingPrelabels} />
+              </label>
+              <Button variant="danger" className="w-full" onClick={handleDeletePrelabels}>Clear All Prelabels</Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

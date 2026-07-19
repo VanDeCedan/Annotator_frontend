@@ -99,16 +99,7 @@ export default function DatasetPage() {
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const [matchedFiles, setMatchedFiles] = useState<File[]>([]);
   const [totalSelected, setTotalSelected] = useState(0);
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return;
-    const files = Array.from(e.target.files);
-    setTotalSelected(files.length);
-    const matched = files.filter((f) => labeledImages.includes(f.name));
-    setMatchedFiles(matched);
-  };
 
   const [config, setConfig] = useState<ExportConfig>({
     yolo_version: 'v8',
@@ -188,10 +179,6 @@ export default function DatasetPage() {
       showToast('No labeled images found for this project', 'error');
       return;
     }
-    if (matchedFiles.length === 0) {
-      showToast('Please upload original images that match the labeled data.', 'error');
-      return;
-    }
     if (config.split_enabled && !splitValid) {
       showToast('Train/Val/Test percentages must sum to 100%', 'error');
       return;
@@ -199,24 +186,10 @@ export default function DatasetPage() {
 
     setIsGenerating(true);
     try {
-      const sessionId = 'generate_' + Date.now();
-      const BATCH_SIZE = 50;
-
-      showToast(`Uploading ${matchedFiles.length} images...`, 'success');
-      for (let i = 0; i < matchedFiles.length; i += BATCH_SIZE) {
-        const batch = matchedFiles.slice(i, i + BATCH_SIZE);
-        const formData = new FormData();
-        batch.forEach((f) => formData.append('files', f));
-
-        await api.post(`/projects/${projectId}/images/upload?session_id=${sessionId}`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-      }
-
-      showToast('Images uploaded. Generating dataset (this may take a while)...', 'success');
+      showToast('Generating dataset (this may take a while)...', 'success');
 
       const payload: any = {
-        session_id: sessionId,
+        session_id: "local_workspace",
         resize: config.resize.trim() || null,
         split_enabled: config.split_enabled,
         train_pct: config.train_pct,
@@ -342,56 +315,9 @@ export default function DatasetPage() {
         )}
       </SectionCard>
 
-      {/* ── Section 1.5: Upload Original Images ─────────────────────────────── */}
-      <SectionCard title="📁 Upload Original Images">
-        <div className="bg-gray-50 border border-gray-200 rounded p-4">
-          <p className="text-sm text-gray-600 mb-4">
-            The database contains labels for {labeledCount} images. Please select the folder containing your original images.
-          </p>
-          <div className="flex gap-4">
-            <label className="flex-1 flex flex-col items-center justify-center h-24 border-2 border-blue-300 border-dashed rounded cursor-pointer bg-blue-50 hover:bg-blue-100 transition-colors">
-              <div className="flex flex-col items-center justify-center pt-2">
-                <svg className="w-5 h-5 mb-1 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                <p className="text-sm font-bold text-blue-700">Select Files</p>
-                <p className="text-xs text-blue-500 mt-1">Choose individual images</p>
-              </div>
-              <input type="file" className="hidden" multiple accept="image/*" onChange={handleFileSelect} />
-            </label>
-            <label className="flex-1 flex flex-col items-center justify-center h-24 border-2 border-green-300 border-dashed rounded cursor-pointer bg-green-50 hover:bg-green-100 transition-colors">
-              <div className="flex flex-col items-center justify-center pt-2">
-                <svg className="w-5 h-5 mb-1 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
-                <p className="text-sm font-bold text-green-700">Select Folder</p>
-                <p className="text-xs text-green-500 mt-1">Choose an entire folder</p>
-              </div>
-              {/* @ts-ignore */}
-              <input type="file" className="hidden" multiple accept="image/*" onChange={handleFileSelect} webkitdirectory="true" directory="true" />
-            </label>
-          </div>
+      {/* Removed redundant image upload section because images are persistent */}
 
-          {totalSelected > 0 && (
-            <div className="mt-4 p-3 bg-white border border-gray-200 rounded">
-              <p className="text-sm">
-                Selected <span className="font-bold text-black">{totalSelected}</span> images.
-              </p>
-              <p className={`text-sm font-medium ${matchedFiles.length > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                Found labels for {matchedFiles.length} images. 
-                {totalSelected - matchedFiles.length > 0 && ` (${totalSelected - matchedFiles.length} unlabelled images will be ignored).`}
-              </p>
-              {matchedFiles.length > 0 && matchedFiles.length < labeledCount && (
-                <p className="text-sm text-amber-600 mt-1">
-                  Warning: {labeledCount - matchedFiles.length} labeled images are missing from your selection.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      </SectionCard>
-
-      <div className={`transition-opacity duration-300 ${matchedFiles.length > 0 ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+      <div className={`transition-opacity duration-300 opacity-100`}>
       {/* ── Section 2: Format Settings ────────────────────────────────────── */}
       <SectionCard title="⚙️ Format Settings">
         {/* YOLO version — only for YOLO projects */}

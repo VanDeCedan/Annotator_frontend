@@ -7,6 +7,7 @@ import { ClassPanel } from '@/components/annotator/ClassPanel';
 import { OCRPanel } from '@/components/annotator/OCRPanel';
 import { AnnotatorCanvas } from '@/components/annotator/AnnotatorCanvas';
 import { useAnnotatorState } from '@/components/annotator/useAnnotatorState';
+import api from '@/lib/api';
 
 export default function AnnotatePage() {
   const router = useRouter();
@@ -16,9 +17,38 @@ export default function AnnotatePage() {
   const projectId = Number(params.projectId);
   const initialIndex = Number(params.imageIndex) || 0;
 
-  const sessionId = searchParams.get('session');
-  const imageNamesStr = searchParams.get('images');
-  const imageNames = imageNamesStr ? imageNamesStr.split(',') : [];
+  const mode = searchParams.get('mode');
+  const [imageNames, setImageNames] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [debugError, setDebugError] = useState<string>('');
+
+  useEffect(() => {
+    const fetchImages = async () => {
+      try {
+        const imagesRes = await api.get(`/projects/${projectId}/images/local_workspace`);
+        const allImages: string[] = imagesRes.data.image_names || [];
+
+        const progressRes = await api.get(`/projects/${projectId}/labels/progress/`);
+        const labeledImages: string[] = progressRes.data.labeled_images || [];
+
+        if (mode === 'annotated') {
+          setImageNames(allImages.filter(img => labeledImages.includes(img)));
+        } else if (mode === 'unannotated') {
+          setImageNames(allImages.filter(img => !labeledImages.includes(img)));
+        } else {
+          // Fallback to legacy URL passing
+          const imageNamesStr = searchParams.get('images');
+          setImageNames(imageNamesStr ? imageNamesStr.split(',') : allImages);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setDebugError(err.message || String(err));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchImages();
+  }, [projectId, mode, searchParams]);
 
   const {
     currentIndex,
@@ -46,29 +76,42 @@ export default function AnnotatePage() {
   const [imageUrl, setImageUrl] = useState('');
 
   useEffect(() => {
-    if (!sessionId || !currentImageName) return;
-    const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/projects/${projectId}/images/${sessionId}/${currentImageName}`;
+    if (!currentImageName) return;
+    // Hardcode local_workspace as the session
+    const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/projects/${projectId}/images/local_workspace/${currentImageName}`;
     setImageUrl(url);
 
-    const newUrl = `/annotate/${projectId}/${currentIndex}?session=${sessionId}&images=${imageNamesStr}`;
+    const newUrl = `/annotate/${projectId}/${currentIndex}${mode ? `?mode=${mode}` : ''}`;
     window.history.replaceState({ ...window.history.state, as: newUrl, url: newUrl }, '', newUrl);
-  }, [currentIndex, currentImageName, sessionId, projectId]);
+  }, [currentIndex, currentImageName, projectId, mode]);
 
   const handleBack = async () => {
     await saveCurrent();
     router.push(`/annotator?project=${projectId}`);
   };
 
-  if (!sessionId || imageNames.length === 0) {
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#EAEEF5]">
+        <svg className="animate-spin h-10 w-10 text-blue-500" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (imageNames.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#EAEEF5]">
         <div className="bg-white border rounded shadow-md p-8 text-center">
-          <p className="text-black font-medium mb-4">Invalid session. Please start from the project dashboard.</p>
+          <p className="text-black font-medium mb-2">No images found for this session.</p>
+          <p className="text-red-500 text-xs mb-4">Debug: Mode={mode}, ProjectId={projectId}. Error: {debugError || 'None'}</p>
           <button
-            onClick={() => router.push('/projects')}
+            onClick={() => router.push(`/annotator?project=${projectId}`)}
             className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
           >
-            Go to Projects
+            Go to Project Dashboard
           </button>
         </div>
       </div>
