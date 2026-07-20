@@ -18,6 +18,7 @@ interface AnnotatorCanvasProps {
     setSelectedLabelIndex?: (index: number | null) => void;
     rotationStep?: number;
     autoAdaptBox?: boolean;
+    doubleClickRotationEnabled?: boolean;
 }
 
 // Helper removed
@@ -83,7 +84,8 @@ export function AnnotatorCanvas({
     selectedLabelIndex = null,
     setSelectedLabelIndex,
     rotationStep = 5,
-    autoAdaptBox = true
+    autoAdaptBox = true,
+    doubleClickRotationEnabled = false
 }: AnnotatorCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -626,7 +628,7 @@ export function AnnotatorCanvas({
         }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: React.MouseEvent) => {
         if (isPanning) {
             setIsPanning(false);
             return;
@@ -689,17 +691,66 @@ export function AnnotatorCanvas({
         }
     };
 
+    const handleDoubleClick = (e: React.MouseEvent) => {
+        if (!doubleClickRotationEnabled || projectType !== 'Yolo OBB' || !image) return;
+
+        const pos = getMousePos(e);
+        let clickedIndex: number | null = null;
+        let originalBox = null;
+
+        // Find the clicked box
+        for (let i = labels.length - 1; i >= 0; i--) {
+            const lbl = labels[i];
+            const coords = lbl.coordinates.split(' ').map(Number);
+            if (coords.length === 8) {
+                const parsed = parseOBBCoords(coords, image.width, image.height);
+                if (parsed && isPointInRotatedRect(pos.x, pos.y, parsed)) {
+                    clickedIndex = i;
+                    originalBox = parsed;
+                    break;
+                }
+            }
+        }
+
+        if (clickedIndex !== null && originalBox) {
+            const newLabels = [...labels];
+            const lbl = newLabels[clickedIndex];
+            
+            // Rotate clockwise (Right direction, dir = 1)
+            let newAngle = originalBox.angle + (rotationStep * Math.PI / 180);
+            
+            // Keep angle between 0 and 2PI
+            newAngle = newAngle % (2 * Math.PI);
+            if (newAngle < 0) newAngle += 2 * Math.PI;
+
+            let nw = originalBox.w;
+            let nh = originalBox.h;
+
+            if (autoAdaptBox) {
+                const stepCount = Math.round(Math.abs(rotationStep) / 90) % 2;
+                if (stepCount !== 0) {
+                    nw = originalBox.h;
+                    nh = originalBox.w;
+                }
+            }
+
+            const nbox = { cx: originalBox.cx, cy: originalBox.cy, w: nw, h: nh, angle: newAngle };
+            const corners = getOBBCorners(nbox);
+            const norm = corners.map(pt => `${pt.x / image.width} ${pt.y / image.height}`);
+            lbl.coordinates = norm.join(' ');
+            onLabelsChange(newLabels);
+        }
+    };
+
     return (
-        <div 
-            ref={containerRef} 
-            className="flex-1 bg-[#EAEEF5] overflow-hidden relative cursor-crosshair"
-        >
+        <div ref={containerRef} className="flex-1 bg-[#EAEEF5] overflow-hidden relative cursor-crosshair">
             <canvas
                 ref={canvasRef}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
+                onDoubleClick={handleDoubleClick}
                 onContextMenu={handleContextMenu}
                 className="absolute top-0 left-0"
             />

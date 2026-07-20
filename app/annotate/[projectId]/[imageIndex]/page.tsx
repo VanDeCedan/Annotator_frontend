@@ -76,6 +76,7 @@ export default function AnnotatePage() {
   const [imageUrl, setImageUrl] = useState('');
   const [rotationStep, setRotationStep] = useState(90);
   const [autoAdaptBox, setAutoAdaptBox] = useState(true);
+  const [doubleClickRotationEnabled, setDoubleClickRotationEnabled] = useState(false);
 
   useEffect(() => {
     if (!currentImageName) return;
@@ -86,6 +87,28 @@ export default function AnnotatePage() {
     const newUrl = `/annotate/${projectId}/${currentIndex}${mode ? `?mode=${mode}` : ''}`;
     window.history.replaceState({ ...window.history.state, as: newUrl, url: newUrl }, '', newUrl);
   }, [currentIndex, currentImageName, projectId, mode]);
+
+  // Global keyboard shortcuts for navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input field
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        return;
+      }
+      
+      if (e.key === 'Tab') {
+        e.preventDefault(); // Prevent default focus switching
+        if (e.shiftKey) {
+          if (canPrev) prevImage();
+        } else {
+          if (canNext) nextImage();
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canNext, canPrev, nextImage, prevImage]);
 
   const handleBack = async () => {
     await saveCurrent();
@@ -151,6 +174,7 @@ export default function AnnotatePage() {
               setSelectedLabelIndex={setSelectedLabelIndex}
               rotationStep={rotationStep}
               autoAdaptBox={autoAdaptBox}
+              doubleClickRotationEnabled={doubleClickRotationEnabled}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-[#EAEEF5]">
@@ -249,14 +273,24 @@ export default function AnnotatePage() {
                 />
                 <span className="text-sm text-gray-500 font-medium">deg</span>
               </div>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex items-center gap-2 cursor-pointer mt-3">
                 <input
                   type="checkbox"
                   checked={autoAdaptBox}
                   onChange={(e) => setAutoAdaptBox(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
                 />
-                <span className="text-sm text-gray-700 font-medium">Auto-adapt box size</span>
+                <span className="text-sm text-gray-700 font-medium">Auto-adapt box to angles</span>
+              </label>
+              
+              <label className="flex items-center gap-2 cursor-pointer mt-3">
+                <input
+                  type="checkbox"
+                  checked={doubleClickRotationEnabled}
+                  onChange={(e) => setDoubleClickRotationEnabled(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
+                />
+                <span className="text-sm text-gray-700 font-medium">Enable double-click rotation</span>
               </label>
             </div>
           )}
