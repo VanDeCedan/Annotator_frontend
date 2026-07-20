@@ -84,7 +84,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
             const sessionId = 'generate_' + Date.now();
             const BATCH_SIZE = 50;
             
-            showToast(`Uploading ${matchedFiles.length} images for generation...`, 'info');
+            showToast(`Uploading ${matchedFiles.length} images for generation...`, 'warning');
             
             for (let i = 0; i < matchedFiles.length; i += BATCH_SIZE) {
                 const batch = matchedFiles.slice(i, i + BATCH_SIZE);
@@ -96,7 +96,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                 });
             }
 
-            showToast('Images uploaded. Generating dataset (this may take a while)...', 'info');
+            showToast('Images uploaded. Generating dataset (this may take a while)...', 'warning');
 
             // Generate and Download
             const payload = {

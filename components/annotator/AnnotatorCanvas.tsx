@@ -19,6 +19,7 @@ interface AnnotatorCanvasProps {
     rotationStep?: number;
     autoAdaptBox?: boolean;
     doubleClickRotationEnabled?: boolean;
+    onImageLoad?: (width: number, height: number) => void;
 }
 
 // Helper removed
@@ -85,7 +86,8 @@ export function AnnotatorCanvas({
     setSelectedLabelIndex,
     rotationStep = 5,
     autoAdaptBox = true,
-    doubleClickRotationEnabled = false
+    doubleClickRotationEnabled = false,
+    onImageLoad
 }: AnnotatorCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -166,6 +168,7 @@ export function AnnotatorCanvas({
         img.src = imageUrl;
         img.onload = () => {
             setImage(img);
+            if (onImageLoad) onImageLoad(img.width, img.height);
             if (containerRef.current) {
                 const cRatio = containerRef.current.clientWidth / containerRef.current.clientHeight;
                 const iRatio = img.width / img.height;
@@ -448,10 +451,10 @@ export function AnnotatorCanvas({
                     { id: 'l', x: x1, y: my }, { id: 'r', x: x2, y: my }
                 ];
 
-                for (const h of handles) {
-                    if (Math.abs(pos.x - h.x) <= r * 2 && Math.abs(pos.y - h.y) <= r * 2) {
+                for (const handle of handles) {
+                    if (Math.abs(pos.x - handle.x) <= r * 2 && Math.abs(pos.y - handle.y) <= r * 2) {
                         setMode('resizing_yolo');
-                        setResizeHandle(h.id);
+                        setResizeHandle(handle.id);
                         setOriginalBox({cx, cy, w, h, angle: 0});
                         return;
                     }

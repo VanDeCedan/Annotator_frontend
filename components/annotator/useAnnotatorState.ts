@@ -13,6 +13,12 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
     const [labels, setLabels] = useState<any[]>([]);
     const [ocrValue, setOcrValue] = useState('');
     const [prelabelStatus, setPrelabelStatus] = useState<string | null>(null);
+    const [originalPrelabels, setOriginalPrelabels] = useState<any[]>([]);
+    
+    // Pre-label rotation state
+    const [prelabelRotationEnabled, setPrelabelRotationEnabled] = useState(false);
+    const [prelabelRotationOffset, setPrelabelRotationOffset] = useState(90);
+    const [imageDimensions, setImageDimensions] = useState<{width: number, height: number} | null>(null);
     
     const [isSaving, setIsSaving] = useState(false);
     
@@ -46,11 +52,13 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                 const data = res.data;
                 
                 if (data.type === 'Yolo' || data.type === 'Yolo OBB') {
-                    setLabels(data.labels || []);
                     if (data.prelabels && data.prelabels.length > 0 && data.labels.length === 0) {
+                        setOriginalPrelabels(data.prelabels);
                         setLabels(data.prelabels);
                         setPrelabelStatus('Loaded from prelabels');
                     } else {
+                        setLabels(data.labels || []);
+                        setOriginalPrelabels([]);
                         setPrelabelStatus(null);
                     }
                 } else if (data.type === 'Classification') {
@@ -76,6 +84,76 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         
         loadLabels();
     }, [projectId, currentImageName]);
+
+    // OBB Utility functions
+    const parseOBBCoords = useCallback((coords: number[], imgW: number, imgH: number) => {
+        if (coords.length !== 8) return null;
+        const x1 = coords[0] * imgW, y1 = coords[1] * imgH;
+        const x2 = coords[2] * imgW, y2 = coords[3] * imgH;
+        const x3 = coords[4] * imgW, y3 = coords[5] * imgH;
+        const x4 = coords[6] * imgW, y4 = coords[7] * imgH;
+
+        const cx = (x1 + x2 + x3 + x4) / 4;
+        const cy = (y1 + y2 + y3 + y4) / 4;
+        const w = Math.hypot(x2 - x1, y2 - y1);
+        const h = Math.hypot(x3 - x2, y3 - y2);
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+
+        return { cx, cy, w, h, angle };
+    }, []);
+
+    const getOBBCorners = useCallback((box: {cx: number, cy: number, w: number, h: number, angle: number}) => {
+        const cosA = Math.cos(box.angle);
+        const sinA = Math.sin(box.angle);
+        const hw = box.w / 2;
+        const hh = box.h / 2;
+        const corners = [
+            { x: -hw, y: -hh }, { x: hw, y: -hh },
+            { x: hw, y: hh }, { x: -hw, y: hh }
+        ];
+        return corners.map(pt => ({
+            x: box.cx + pt.x * cosA - pt.y * sinA,
+            y: box.cy + pt.x * sinA + pt.y * cosA
+        }));
+    }, []);
+
+    // Apply rotation when toggled, offset changed, or image loads
+    useEffect(() => {
+        if (projectType === 'Yolo OBB' && prelabelStatus === 'Loaded from prelabels' && imageDimensions && originalPrelabels.length > 0) {
+            if (prelabelRotationEnabled) {
+                const angleRad = (prelabelRotationOffset * Math.PI) / 180;
+                const newLabels = originalPrelabels.map(lbl => {
+                    const coords = lbl.coordinates.split(' ').map(Number);
+                    const parsed = parseOBBCoords(coords, imageDimensions.width, imageDimensions.height);
+                    if (parsed) {
+                        const newAngle = parsed.angle + angleRad;
+                        let newW = parsed.w;
+                        let newH = parsed.h;
+                        
+                        // Auto-adapt box size for 90-degree increments
+                        if (Math.round(Math.abs(prelabelRotationOffset) / 90) % 2 !== 0) {
+                            newW = parsed.h;
+                            newH = parsed.w;
+                        }
+                        
+                        const nbox = { ...parsed, angle: newAngle, w: newW, h: newH };
+                        const corners = getOBBCorners(nbox);
+                        const norm = corners.map(pt => `${pt.x / imageDimensions.width} ${pt.y / imageDimensions.height}`);
+                        return { ...lbl, coordinates: norm.join(' ') };
+                    }
+                    return lbl;
+                });
+                setLabels(newLabels);
+            } else {
+                // Revert to original prelabels if unchecked
+                setLabels([...originalPrelabels]);
+            }
+        }
+    }, [prelabelRotationEnabled, prelabelRotationOffset, imageDimensions, originalPrelabels, prelabelStatus, projectType, parseOBBCoords, getOBBCorners]);
+
+    const onImageLoaded = (width: number, height: number) => {
+        setImageDimensions({ width, height });
+    };
 
     const saveCurrent = async () => {
         if (!currentImageName) return;
@@ -115,6 +193,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         if (currentIndex < imageNames.length - 1) {
             setCurrentIndex(currentIndex + 1);
             setSelectedLabelIndex(null);
+            setImageDimensions(null);
         } else {
              showToast('Reached end of images', 'success');
         }
@@ -125,6 +204,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         if (currentIndex > 0) {
             setCurrentIndex(currentIndex - 1);
             setSelectedLabelIndex(null);
+            setImageDimensions(null);
         }
     };
 
@@ -132,6 +212,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         if (currentIndex < imageNames.length - 1) {
             setCurrentIndex(currentIndex + 1);
             setSelectedLabelIndex(null);
+            setImageDimensions(null);
         } else {
              showToast('Reached end of images', 'success');
         }
@@ -157,6 +238,11 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         prevImage,
         skipImage,
         canNext: currentIndex < imageNames.length - 1,
-        canPrev: currentIndex > 0
+        canPrev: currentIndex > 0,
+        prelabelRotationEnabled,
+        setPrelabelRotationEnabled,
+        prelabelRotationOffset,
+        setPrelabelRotationOffset,
+        onImageLoaded
     };
 }

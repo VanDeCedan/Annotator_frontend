@@ -71,6 +71,11 @@ export default function AnnotatePage() {
     skipImage,
     canNext,
     canPrev,
+    prelabelRotationEnabled,
+    setPrelabelRotationEnabled,
+    prelabelRotationOffset,
+    setPrelabelRotationOffset,
+    onImageLoaded
   } = useAnnotatorState(projectId, imageNames, initialIndex);
 
   const [imageUrl, setImageUrl] = useState('');
@@ -175,6 +180,7 @@ export default function AnnotatePage() {
               rotationStep={rotationStep}
               autoAdaptBox={autoAdaptBox}
               doubleClickRotationEnabled={doubleClickRotationEnabled}
+              onImageLoad={onImageLoaded}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-[#EAEEF5]">
@@ -292,6 +298,34 @@ export default function AnnotatePage() {
                 />
                 <span className="text-sm text-gray-700 font-medium">Enable double-click rotation</span>
               </label>
+
+              <hr className="my-4 border-gray-200" />
+              
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
+                Pre-label Settings
+              </label>
+              
+              <label className="flex items-center gap-2 cursor-pointer mb-3">
+                <input
+                  type="checkbox"
+                  checked={prelabelRotationEnabled}
+                  onChange={(e) => setPrelabelRotationEnabled(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
+                />
+                <span className="text-sm text-gray-700 font-medium">Apply angle offset</span>
+              </label>
+
+              {prelabelRotationEnabled && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={prelabelRotationOffset}
+                    onChange={(e) => setPrelabelRotationOffset(Number(e.target.value) || 0)}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-black focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-500 font-medium">deg</span>
+                </div>
+              )}
             </div>
           )}
 
