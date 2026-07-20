@@ -218,6 +218,16 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         }
     };
 
+    const jumpToImage = (targetIndex: number) => {
+        if (targetIndex >= 0 && targetIndex < imageNames.length) {
+            setCurrentIndex(targetIndex);
+            setSelectedLabelIndex(null);
+            setImageDimensions(null);
+        } else {
+            showToast('Invalid image index', 'error');
+        }
+    };
+
     return {
         currentIndex,
         currentImageName,
@@ -237,6 +247,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         nextImage,
         prevImage,
         skipImage,
+        jumpToImage,
         canNext: currentIndex < imageNames.length - 1,
         canPrev: currentIndex > 0,
         prelabelRotationEnabled,

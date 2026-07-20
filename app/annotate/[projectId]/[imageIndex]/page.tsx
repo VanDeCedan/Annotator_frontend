@@ -69,6 +69,7 @@ export default function AnnotatePage() {
     nextImage,
     prevImage,
     skipImage,
+    jumpToImage,
     canNext,
     canPrev,
     prelabelRotationEnabled,
@@ -238,6 +239,25 @@ export default function AnnotatePage() {
             >
               Skip
             </button>
+            <div className="flex items-center gap-1 ml-2 border-l border-gray-300 pl-3">
+              <span className="text-xs text-gray-500 font-medium">Jump:</span>
+              <input 
+                type="number" 
+                min={1} 
+                max={imageNames.length}
+                placeholder="#"
+                className="w-14 border border-gray-300 rounded px-1 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const val = parseInt(e.currentTarget.value);
+                    if (!isNaN(val) && val >= 1 && val <= imageNames.length) {
+                       jumpToImage(val - 1);
+                       e.currentTarget.value = '';
+                    }
+                  }
+                }}
+              />
+            </div>
           </div>
         </div>
 
