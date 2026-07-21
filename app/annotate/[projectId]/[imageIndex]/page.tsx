@@ -84,6 +84,27 @@ export default function AnnotatePage() {
   const [autoAdaptBox, setAutoAdaptBox] = useState(true);
   const [doubleClickRotationEnabled, setDoubleClickRotationEnabled] = useState(false);
 
+  // Sidebar resizer state
+  const [sidebarWidth, setSidebarWidth] = useState(288); // Default 288px (Tailwind w-72)
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+
+  useEffect(() => {
+    if (!isResizingSidebar) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = window.innerWidth - e.clientX;
+      if (newWidth > 200 && newWidth < window.innerWidth - 200) {
+        setSidebarWidth(newWidth);
+      }
+    };
+    const handleMouseUp = () => setIsResizingSidebar(false);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingSidebar]);
+
   useEffect(() => {
     if (!currentImageName) return;
     // Hardcode local_workspace as the session
@@ -165,7 +186,7 @@ export default function AnnotatePage() {
         </div>
       )}
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden" style={{ cursor: isResizingSidebar ? 'col-resize' : 'default' }}>
         {/* Canvas */}
         <div className="flex-1 flex flex-col relative focus:outline-none" tabIndex={0}>
           {imageUrl ? (
@@ -261,8 +282,15 @@ export default function AnnotatePage() {
           </div>
         </div>
 
+        {/* Resizer Handle */}
+        <div 
+          onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebar(true); }}
+          className={`w-1 cursor-col-resize shrink-0 transition-colors border-l border-gray-300 ${isResizingSidebar ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-300'}`}
+          style={{ zIndex: 50 }}
+        />
+
         {/* Right panel wrapper */}
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full shrink-0 bg-white" style={{ width: sidebarWidth }}>
           {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'Classification') && (
             <ClassPanel
               classes={classes}
@@ -286,7 +314,7 @@ export default function AnnotatePage() {
 
           {/* Rotation step controls for Yolo OBB */}
           {projectType === 'Yolo OBB' && (
-            <div className="w-60 bg-white border-l border-gray-300 p-4 border-t border-gray-200 shadow-inner">
+            <div className="w-full bg-white p-4 border-t border-gray-200 shadow-inner">
               <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
                 Arrow Key Rotation Step
               </label>
@@ -350,7 +378,12 @@ export default function AnnotatePage() {
           )}
 
           {projectType === 'Ocr' && (
-            <OCRPanel value={ocrValue} onChange={setOcrValue} />
+            <OCRPanel 
+              value={ocrValue} 
+              onChange={setOcrValue} 
+              onNext={canNext ? nextImage : undefined}
+              onPrev={canPrev ? prevImage : undefined}
+            />
           )}
         </div>
       </div>
