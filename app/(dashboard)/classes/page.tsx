@@ -29,7 +29,7 @@ export default function ClassesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   
-  const [formData, setFormData] = useState({ selectedProjectId: '', label: '', color: '#ef4444' });
+  const [formData, setFormData] = useState({ selectedProjectId: '', label: '', color: '#ef4444', code: '' });
 
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; id: number | null; force: boolean }>({
     isOpen: false,
@@ -76,10 +76,11 @@ export default function ClassesPage() {
     }
 
     const payload = { label: formData.label, color: formData.color };
+    const updatePayload = formData.code !== '' ? { ...payload, code: Number(formData.code) } : payload;
 
     try {
       if (editingId) {
-        await api.put(`/projects/${targetProjectId}/classes/${editingId}`, payload);
+        await api.put(`/projects/${targetProjectId}/classes/${editingId}`, updatePayload);
         showToast('Class updated', 'success');
       } else {
         await api.post(`/projects/${targetProjectId}/classes`, [payload]);
@@ -123,7 +124,8 @@ export default function ClassesPage() {
       setFormData({ 
         selectedProjectId: projectId ? String(projectId) : '', 
         label: cls.label, 
-        color: cls.color 
+        color: cls.color,
+        code: String(cls.code)
       });
     } else {
       setEditingId(null);
@@ -132,7 +134,8 @@ export default function ClassesPage() {
       setFormData({ 
         selectedProjectId: projectId ? String(projectId) : (eligibleProjects.length > 0 ? String(eligibleProjects[0].id) : ''), 
         label: '', 
-        color: '#ef4444' 
+        color: '#ef4444',
+        code: ''
       });
     }
     setIsModalOpen(true);
@@ -248,6 +251,16 @@ export default function ClassesPage() {
                 .filter(p => p.type !== 'Ocr')
                 .map(p => ({ value: String(p.id), label: p.name }))}
               required
+            />
+          )}
+          {editingId && (
+            <Input
+              label="Class Code"
+              type="number"
+              value={formData.code}
+              onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+              required
+              placeholder="e.g. 0, 1, 2"
             />
           )}
           <Input

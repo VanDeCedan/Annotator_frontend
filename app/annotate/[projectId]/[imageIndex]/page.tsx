@@ -85,6 +85,7 @@ export default function AnnotatePage() {
   const [autoAdaptBox, setAutoAdaptBox] = useState(true);
   const [doubleClickRotationEnabled, setDoubleClickRotationEnabled] = useState(false);
   const [inheritFirstBoxAngle, setInheritFirstBoxAngle] = useState(false);
+  const [zoomToAreaEnabled, setZoomToAreaEnabled] = useState(false);
 
   // Sidebar resizer state
   const [sidebarWidth, setSidebarWidth] = useState(288); // Default 288px (Tailwind w-72)
@@ -190,78 +191,109 @@ export default function AnnotatePage() {
 
       <div className="flex flex-1 overflow-hidden" style={{ cursor: isResizingSidebar ? 'col-resize' : 'default' }}>
         
-        {/* Left config panel for Yolo OBB */}
-        {projectType === 'Yolo OBB' && (
+        {/* Left config panel for Yolo and Yolo OBB */}
+        {(projectType === 'Yolo' || projectType === 'Yolo OBB') && (
           <div className="w-64 flex flex-col shrink-0 bg-white border-r border-gray-200 h-full overflow-y-auto">
             <div className="w-full p-4">
               <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
-                Arrow Key Rotation Step
-              </label>
-              <div className="flex items-center gap-2 mb-3">
-                <input
-                  type="number"
-                  value={rotationStep}
-                  onChange={(e) => setRotationStep(Number(e.target.value) || 0)}
-                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-black focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-500 font-medium">deg</span>
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer mt-3">
-                <input
-                  type="checkbox"
-                  checked={autoAdaptBox}
-                  onChange={(e) => setAutoAdaptBox(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
-                />
-                <span className="text-sm text-gray-700 font-medium">Auto-adapt box to angles</span>
-              </label>
-              
-              <label className="flex items-center gap-2 cursor-pointer mt-3">
-                <input
-                  type="checkbox"
-                  checked={doubleClickRotationEnabled}
-                  onChange={(e) => setDoubleClickRotationEnabled(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
-                />
-                <span className="text-sm text-gray-700 font-medium">Enable double-click rotation</span>
-              </label>
-              
-              <label className="flex items-center gap-2 cursor-pointer mt-3">
-                <input
-                  type="checkbox"
-                  checked={inheritFirstBoxAngle}
-                  onChange={(e) => setInheritFirstBoxAngle(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
-                />
-                <span className="text-sm text-gray-700 font-medium">Inherit first box angle</span>
+                Annotation Tools
               </label>
 
-              <hr className="my-4 border-gray-200" />
-              
-              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
-                Pre-label Settings
-              </label>
-              
-              <label className="flex items-center gap-2 cursor-pointer mb-3">
+              <label className={`flex items-center gap-2.5 cursor-pointer p-2.5 rounded-lg border transition-all mb-3 ${
+                zoomToAreaEnabled 
+                  ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' 
+                  : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+              }`}>
                 <input
                   type="checkbox"
-                  checked={prelabelRotationEnabled}
-                  onChange={(e) => setPrelabelRotationEnabled(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
+                  checked={zoomToAreaEnabled}
+                  onChange={(e) => setZoomToAreaEnabled(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-700 font-medium">Apply angle offset</span>
-              </label>
-
-              {prelabelRotationEnabled && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    value={prelabelRotationOffset}
-                    onChange={(e) => setPrelabelRotationOffset(Number(e.target.value) || 0)}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-black focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-500 font-medium">deg</span>
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold flex items-center gap-1.5">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                    Area Zoom Mode
+                  </span>
+                  <span className="text-[11px] text-gray-500 font-normal">Drag box to zoom into area</span>
                 </div>
+              </label>
+
+              {projectType === 'Yolo OBB' && (
+                <>
+                  <hr className="my-3 border-gray-200" />
+                  <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
+                    Arrow Key Rotation Step
+                  </label>
+                  <div className="flex items-center gap-2 mb-3">
+                    <input
+                      type="number"
+                      value={rotationStep}
+                      onChange={(e) => setRotationStep(Number(e.target.value) || 0)}
+                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-black focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-500 font-medium">deg</span>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer mt-3">
+                    <input
+                      type="checkbox"
+                      checked={autoAdaptBox}
+                      onChange={(e) => setAutoAdaptBox(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
+                    />
+                    <span className="text-sm text-gray-700 font-medium">Auto-adapt box to angles</span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 cursor-pointer mt-3">
+                    <input
+                      type="checkbox"
+                      checked={doubleClickRotationEnabled}
+                      onChange={(e) => setDoubleClickRotationEnabled(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
+                    />
+                    <span className="text-sm text-gray-700 font-medium">Enable double-click rotation</span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 cursor-pointer mt-3">
+                    <input
+                      type="checkbox"
+                      checked={inheritFirstBoxAngle}
+                      onChange={(e) => setInheritFirstBoxAngle(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
+                    />
+                    <span className="text-sm text-gray-700 font-medium">Inherit first box angle</span>
+                  </label>
+
+                  <hr className="my-4 border-gray-200" />
+                  
+                  <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
+                    Pre-label Settings
+                  </label>
+                  
+                  <label className="flex items-center gap-2 cursor-pointer mb-3">
+                    <input
+                      type="checkbox"
+                      checked={prelabelRotationEnabled}
+                      onChange={(e) => setPrelabelRotationEnabled(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
+                    />
+                    <span className="text-sm text-gray-700 font-medium">Apply angle offset</span>
+                  </label>
+
+                  {prelabelRotationEnabled && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={prelabelRotationOffset}
+                        onChange={(e) => setPrelabelRotationOffset(Number(e.target.value) || 0)}
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-black focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-500 font-medium">deg</span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -283,6 +315,8 @@ export default function AnnotatePage() {
               autoAdaptBox={autoAdaptBox}
               doubleClickRotationEnabled={doubleClickRotationEnabled}
               inheritFirstBoxAngle={inheritFirstBoxAngle}
+              zoomToAreaEnabled={zoomToAreaEnabled}
+              setZoomToAreaEnabled={setZoomToAreaEnabled}
               onImageLoad={onImageLoaded}
             />
           ) : (

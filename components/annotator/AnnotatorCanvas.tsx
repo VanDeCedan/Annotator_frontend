@@ -20,6 +20,8 @@ interface AnnotatorCanvasProps {
     autoAdaptBox?: boolean;
     doubleClickRotationEnabled?: boolean;
     inheritFirstBoxAngle?: boolean;
+    zoomToAreaEnabled?: boolean;
+    setZoomToAreaEnabled?: (enabled: boolean) => void;
     onImageLoad?: (width: number, height: number) => void;
 }
 
@@ -89,6 +91,8 @@ export function AnnotatorCanvas({
     autoAdaptBox = true,
     doubleClickRotationEnabled = false,
     inheritFirstBoxAngle = false,
+    zoomToAreaEnabled = false,
+    setZoomToAreaEnabled,
     onImageLoad
 }: AnnotatorCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -102,7 +106,7 @@ export function AnnotatorCanvas({
     const [panStart, setPanStart] = useState({ x: 0, y: 0 });
     
     // Interaction mode
-    type Mode = 'idle' | 'drawing_yolo' | 'drawing_obb' | 'dragging_box' | 'resizing_yolo' | 'resizing_obb' | 'rotating_obb';
+    type Mode = 'idle' | 'drawing_yolo' | 'drawing_obb' | 'drawing_zoom' | 'dragging_box' | 'resizing_yolo' | 'resizing_obb' | 'rotating_obb';
     const [mode, setMode] = useState<Mode>('idle');
     
     // Drawing state
@@ -112,6 +116,23 @@ export function AnnotatorCanvas({
     const [dragOffset, setDragOffset] = useState<Point>({x:0, y:0}); 
     const [resizeHandle, setResizeHandle] = useState<string | null>(null); // 'tl', 'tr', 'bl', 'br', 't', 'b', 'l', 'r'
     const [originalBox, setOriginalBox] = useState<{cx: number, cy: number, w: number, h: number, angle: number} | null>(null);
+
+    const resetZoom = useCallback(() => {
+        if (!image || !containerRef.current) return;
+        const cRatio = containerRef.current.clientWidth / containerRef.current.clientHeight;
+        const iRatio = image.width / image.height;
+        let newScale = 1;
+        if (iRatio > cRatio) {
+            newScale = (containerRef.current.clientWidth - 40) / image.width;
+        } else {
+            newScale = (containerRef.current.clientHeight - 40) / image.height;
+        }
+        setScale(newScale);
+        setOffset({
+            x: (containerRef.current.clientWidth - image.width * newScale) / 2,
+            y: (containerRef.current.clientHeight - image.height * newScale) / 2
+        });
+    }, [image]);
 
     // Keyboard delete and rotation
     useEffect(() => {
@@ -324,7 +345,7 @@ export function AnnotatorCanvas({
             }
         });
 
-        // Draw current drawing
+        // Draw current drawing or zoom box
         if (mode === 'drawing_yolo' || mode === 'drawing_obb') {
             const cls = classes.find(c => c.code === activeClassCode);
             const color = cls ? cls.color : '#ffffff';
@@ -337,6 +358,24 @@ export function AnnotatorCanvas({
                  const p2 = currentPoints[1];
                  ctx.strokeRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
             }
+        } else if (mode === 'drawing_zoom') {
+            ctx.save();
+            ctx.strokeStyle = '#2563eb';
+            ctx.fillStyle = 'rgba(37, 99, 235, 0.25)';
+            ctx.lineWidth = 2 / scale;
+            ctx.setLineDash([6 / scale, 4 / scale]);
+
+            if (currentPoints.length === 2) {
+                 const p1 = currentPoints[0];
+                 const p2 = currentPoints[1];
+                 const x = Math.min(p1.x, p2.x);
+                 const y = Math.min(p1.y, p2.y);
+                 const w = Math.abs(p2.x - p1.x);
+                 const h = Math.abs(p2.y - p1.y);
+                 ctx.fillRect(x, y, w, h);
+                 ctx.strokeRect(x, y, w, h);
+            }
+            ctx.restore();
         }
 
         ctx.restore();
@@ -397,6 +436,13 @@ export function AnnotatorCanvas({
 
         if (!image) return;
         const pos = getMousePos(e);
+
+        if (zoomToAreaEnabled) {
+            if (setSelectedLabelIndex) setSelectedLabelIndex(null);
+            setMode('drawing_zoom');
+            setCurrentPoints([pos, pos]);
+            return;
+        }
 
         // 1. Check if clicking on an active selection's handles
         if (selectedLabelIndex !== null) {
@@ -529,7 +575,7 @@ export function AnnotatorCanvas({
         if (!image) return;
         const pos = getMousePos(e);
 
-        if (mode === 'drawing_yolo' || mode === 'drawing_obb') {
+        if (mode === 'drawing_yolo' || mode === 'drawing_obb' || mode === 'drawing_zoom') {
             setCurrentPoints([currentPoints[0], pos]);
         } 
         else if (mode === 'dragging_box' && selectedLabelIndex !== null) {
@@ -639,7 +685,39 @@ export function AnnotatorCanvas({
             return;
         }
 
-        if ((mode === 'drawing_yolo' || mode === 'drawing_obb') && image) {
+        if (mode === 'drawing_zoom' && image && containerRef.current) {
+            setMode('idle');
+            const p1 = currentPoints[0];
+            const p2 = currentPoints[1];
+            if (p1 && p2) {
+                const minX = Math.min(p1.x, p2.x);
+                const maxX = Math.max(p1.x, p2.x);
+                const minY = Math.min(p1.y, p2.y);
+                const maxY = Math.max(p1.y, p2.y);
+
+                const w = maxX - minX;
+                const h = maxY - minY;
+
+                if (w > 5 && h > 5) {
+                    const cw = containerRef.current.clientWidth;
+                    const ch = containerRef.current.clientHeight;
+
+                    const cx = minX + w / 2;
+                    const cy = minY + h / 2;
+
+                    const newScale = Math.min((cw - 40) / w, (ch - 40) / h);
+                    const clampedScale = Math.max(0.1, Math.min(newScale, 50));
+
+                    const newOffsetX = cw / 2 - cx * clampedScale;
+                    const newOffsetY = ch / 2 - cy * clampedScale;
+
+                    setScale(clampedScale);
+                    setOffset({ x: newOffsetX, y: newOffsetY });
+                }
+            }
+            setCurrentPoints([]);
+        }
+        else if ((mode === 'drawing_yolo' || mode === 'drawing_obb') && image) {
             setMode('idle');
             const p1 = currentPoints[0];
             const p2 = currentPoints[1];
@@ -688,7 +766,7 @@ export function AnnotatorCanvas({
 
     const handleContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
-        if (mode === 'drawing_yolo' || mode === 'drawing_obb') {
+        if (mode === 'drawing_yolo' || mode === 'drawing_obb' || mode === 'drawing_zoom') {
             setCurrentPoints([]);
             setMode('idle');
         } else {
@@ -705,58 +783,81 @@ export function AnnotatorCanvas({
     };
 
     const handleDoubleClick = (e: React.MouseEvent) => {
-        if (!doubleClickRotationEnabled || projectType !== 'Yolo OBB' || !image) return;
+        if (!image || !containerRef.current) return;
 
         const pos = getMousePos(e);
-        let clickedIndex: number | null = null;
-        let originalBox = null;
 
-        // Find the clicked box
-        for (let i = labels.length - 1; i >= 0; i--) {
-            const lbl = labels[i];
-            const coords = lbl.coordinates.split(' ').map(Number);
-            if (coords.length === 8) {
-                const parsed = parseOBBCoords(coords, image.width, image.height);
-                if (parsed && isPointInRotatedRect(pos.x, pos.y, parsed)) {
-                    clickedIndex = i;
-                    originalBox = parsed;
-                    break;
-                }
-            }
-        }
+        // Check if double click was on an OBB box when rotation is enabled
+        if (doubleClickRotationEnabled && projectType === 'Yolo OBB') {
+            let clickedIndex: number | null = null;
+            let originalBox = null;
 
-        if (clickedIndex !== null && originalBox) {
-            const newLabels = [...labels];
-            const lbl = newLabels[clickedIndex];
-            
-            // Rotate clockwise (Right direction, dir = 1)
-            let newAngle = originalBox.angle + (rotationStep * Math.PI / 180);
-            
-            // Keep angle between 0 and 2PI
-            newAngle = newAngle % (2 * Math.PI);
-            if (newAngle < 0) newAngle += 2 * Math.PI;
-
-            let nw = originalBox.w;
-            let nh = originalBox.h;
-
-            if (autoAdaptBox) {
-                const stepCount = Math.round(Math.abs(rotationStep) / 90) % 2;
-                if (stepCount !== 0) {
-                    nw = originalBox.h;
-                    nh = originalBox.w;
+            for (let i = labels.length - 1; i >= 0; i--) {
+                const lbl = labels[i];
+                const coords = lbl.coordinates.split(' ').map(Number);
+                if (coords.length === 8) {
+                    const parsed = parseOBBCoords(coords, image.width, image.height);
+                    if (parsed && isPointInRotatedRect(pos.x, pos.y, parsed)) {
+                        clickedIndex = i;
+                        originalBox = parsed;
+                        break;
+                    }
                 }
             }
 
-            const nbox = { cx: originalBox.cx, cy: originalBox.cy, w: nw, h: nh, angle: newAngle };
-            const corners = getOBBCorners(nbox);
-            const norm = corners.map(pt => `${pt.x / image.width} ${pt.y / image.height}`);
-            lbl.coordinates = norm.join(' ');
-            onLabelsChange(newLabels);
+            if (clickedIndex !== null && originalBox) {
+                const newLabels = [...labels];
+                const lbl = newLabels[clickedIndex];
+                
+                let newAngle = originalBox.angle + (rotationStep * Math.PI / 180);
+                newAngle = newAngle % (2 * Math.PI);
+                if (newAngle < 0) newAngle += 2 * Math.PI;
+
+                let nw = originalBox.w;
+                let nh = originalBox.h;
+
+                if (autoAdaptBox) {
+                    const stepCount = Math.round(Math.abs(rotationStep) / 90) % 2;
+                    if (stepCount !== 0) {
+                        nw = originalBox.h;
+                        nh = originalBox.w;
+                    }
+                }
+
+                const nbox = { cx: originalBox.cx, cy: originalBox.cy, w: nw, h: nh, angle: newAngle };
+                const corners = getOBBCorners(nbox);
+                const norm = corners.map(pt => `${pt.x / image.width} ${pt.y / image.height}`);
+                lbl.coordinates = norm.join(' ');
+                onLabelsChange(newLabels);
+                return;
+            }
         }
+
+        // Double-click Zoom on Area: Zoom into the clicked point
+        const cw = containerRef.current.clientWidth;
+        const ch = containerRef.current.clientHeight;
+        const cRatio = cw / ch;
+        const iRatio = image.width / image.height;
+        const fitScale = iRatio > cRatio ? (cw - 40) / image.width : (ch - 40) / image.height;
+
+        let targetScale: number;
+        if (scale < fitScale * 1.8) {
+            targetScale = fitScale * 3; // Step 1: Zoom in 3x
+        } else if (scale < fitScale * 4.5) {
+            targetScale = fitScale * 6; // Step 2: Zoom in 6x
+        } else {
+            targetScale = fitScale; // Step 3: Reset back to fit image
+        }
+
+        const newOffsetX = cw / 2 - pos.x * targetScale;
+        const newOffsetY = ch / 2 - pos.y * targetScale;
+
+        setScale(targetScale);
+        setOffset({ x: newOffsetX, y: newOffsetY });
     };
 
     return (
-        <div ref={containerRef} className="flex-1 bg-[#EAEEF5] overflow-hidden relative cursor-crosshair">
+        <div ref={containerRef} className={`flex-1 bg-[#EAEEF5] overflow-hidden relative ${zoomToAreaEnabled ? 'cursor-zoom-in' : 'cursor-crosshair'}`}>
             <canvas
                 ref={canvasRef}
                 onMouseDown={handleMouseDown}
@@ -767,15 +868,50 @@ export function AnnotatorCanvas({
                 onContextMenu={handleContextMenu}
                 className="absolute top-0 left-0"
             />
+
+            {/* Top Floating Toolbar for Quick Controls */}
+            <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-white/90 backdrop-blur border border-gray-300 p-1.5 rounded-lg shadow-md">
+                <button
+                    onClick={() => setZoomToAreaEnabled && setZoomToAreaEnabled(!zoomToAreaEnabled)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                        zoomToAreaEnabled
+                            ? 'bg-blue-600 text-white shadow-inner ring-2 ring-blue-400'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
+                    }`}
+                    title="Toggle Area Zoom mode (Drag on image to zoom to area)"
+                >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                    <span>Area Zoom</span>
+                    {zoomToAreaEnabled && (
+                        <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-white/30 text-white rounded font-bold uppercase">ON</span>
+                    )}
+                </button>
+
+                <button
+                    onClick={resetZoom}
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-xs font-medium border border-gray-300 transition-colors"
+                    title="Reset zoom to fit image"
+                >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-2V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                    </svg>
+                    Fit Image
+                </button>
+            </div>
             
-            <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur text-white text-xs px-3 py-2 rounded-lg pointer-events-none">
-                <p>Zoom: {Math.round(scale * 100)}%</p>
-                <p>Select: Click Box</p>
+            <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur text-white text-xs px-3 py-2 rounded-lg pointer-events-none shadow z-10">
+                <p className="font-semibold text-blue-300">Zoom: {Math.round(scale * 100)}%</p>
+                {zoomToAreaEnabled ? (
+                    <p className="text-yellow-300 font-semibold animate-pulse">🔍 Drag rectangle on image to zoom</p>
+                ) : (
+                    <p>Select: Click Box | Draw: Drag Box | <span className="text-yellow-300 font-semibold">Double-Click: Zoom Area</span></p>
+                )}
                 {projectType === 'Yolo OBB' && selectedLabelIndex !== null && (
                     <p className="text-yellow-300 font-bold">Drag top handle to rotate</p>
                 )}
-                <p>Delete: Select & Press Del / Right Click</p>
-                <p>Pan: Middle Click / Shift</p>
+                <p>Delete: Select & Del / Right Click | Pan: Middle Click / Shift</p>
             </div>
         </div>
     );
