@@ -228,6 +228,33 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         }
     };
 
+    const markEmptyAndNext = async () => {
+        if (!currentImageName) return;
+        setLabels([]);
+        setSelectedLabelIndex(null);
+        setIsSaving(true);
+        try {
+            if (projectType === 'Yolo' || projectType === 'Yolo OBB') {
+                await api.post(`/projects/${projectId}/labels/yolo`, {
+                    img_name: currentImageName,
+                    labels: []
+                });
+            }
+            showToast('Saved as Background', 'success');
+            setPrelabelStatus(null);
+        } catch (err) {
+            showToast('Failed to save', 'error');
+        } finally {
+            setIsSaving(false);
+            if (currentIndex < imageNames.length - 1) {
+                setCurrentIndex(currentIndex + 1);
+                setImageDimensions(null);
+            } else {
+                 showToast('Reached end of images', 'success');
+            }
+        }
+    };
+
     return {
         currentIndex,
         currentImageName,
@@ -254,6 +281,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         setPrelabelRotationEnabled,
         prelabelRotationOffset,
         setPrelabelRotationOffset,
-        onImageLoaded
+        onImageLoaded,
+        markEmptyAndNext
     };
 }

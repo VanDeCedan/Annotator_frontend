@@ -19,6 +19,7 @@ interface AnnotatorCanvasProps {
     rotationStep?: number;
     autoAdaptBox?: boolean;
     doubleClickRotationEnabled?: boolean;
+    inheritFirstBoxAngle?: boolean;
     onImageLoad?: (width: number, height: number) => void;
 }
 
@@ -87,6 +88,7 @@ export function AnnotatorCanvas({
     rotationStep = 5,
     autoAdaptBox = true,
     doubleClickRotationEnabled = false,
+    inheritFirstBoxAngle = false,
     onImageLoad
 }: AnnotatorCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -656,8 +658,16 @@ export function AnnotatorCanvas({
                 
                 let coords = '';
                 if (mode === 'drawing_obb') {
-                    // Start with 0 angle
-                    const corners = getOBBCorners({cx, cy, w, h, angle: 0});
+                    // Start with 0 angle, or inherit from first box
+                    let initialAngle = 0;
+                    if (inheritFirstBoxAngle && labels.length > 0) {
+                        const firstBoxCoords = labels[0].coordinates.split(' ').map(Number);
+                        const parsed = parseOBBCoords(firstBoxCoords, image.width, image.height);
+                        if (parsed) {
+                            initialAngle = parsed.angle;
+                        }
+                    }
+                    const corners = getOBBCorners({cx, cy, w, h, angle: initialAngle});
                     const norm = corners.map(pt => `${pt.x / image.width} ${pt.y / image.height}`);
                     coords = norm.join(' ');
                 } else {
