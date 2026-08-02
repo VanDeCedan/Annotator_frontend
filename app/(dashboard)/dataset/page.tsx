@@ -542,13 +542,16 @@ export default function DatasetPage() {
               />
             </div>
 
+            <p className="mt-3 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+              ℹ <strong>Note:</strong> Data augmentation applies strictly to the <strong>Training</strong> set (<code>train/</code>). Validation (<code>valid/</code>) and Test (<code>test/</code>) sets will contain <strong>only original un-augmented images</strong> to ensure unbiased evaluation.
+            </p>
             {isOCR && (
-              <p className="mt-3 text-xs text-gray-500 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+              <p className="mt-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded px-3 py-2">
                 ℹ For OCR projects, augmentation applies to images only — no coordinate adjustments.
               </p>
             )}
             {projectInfo?.type === 'Classification' && (
-              <p className="mt-3 text-xs text-gray-500 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+              <p className="mt-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded px-3 py-2">
                 ℹ For Classification projects, augmentation applies to images only — class labels are preserved.
               </p>
             )}
@@ -571,7 +574,9 @@ export default function DatasetPage() {
             )}
             {config.aug_enabled && (
               <p className="text-xs text-gray-500 mt-1">
-                Each image will produce {config.augmentation.num_augs} augmented copies (total ~{labeledCount * (1 + config.augmentation.num_augs)} images).
+                {config.split_enabled && splitValid
+                  ? `Training set images produce ${config.augmentation.num_augs} augmented copies each (total ~${Math.round(labeledCount * (config.train_pct / 100)) * (1 + config.augmentation.num_augs) + Math.round(labeledCount * ((config.val_pct + config.test_pct) / 100))} images; Test & Val are un-augmented).`
+                  : `Each image will produce ${config.augmentation.num_augs} augmented copies (total ~${labeledCount * (1 + config.augmentation.num_augs)} images).`}
               </p>
             )}
           </div>

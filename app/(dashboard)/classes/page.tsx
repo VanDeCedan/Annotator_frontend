@@ -31,10 +31,9 @@ export default function ClassesPage() {
   
   const [formData, setFormData] = useState({ selectedProjectId: '', label: '', color: '#ef4444', code: '' });
 
-  const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; id: number | null; force: boolean }>({
+  const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; id: number | null }>({
     isOpen: false,
     id: null,
-    force: false,
   });
 
   useEffect(() => {
@@ -104,17 +103,13 @@ export default function ClassesPage() {
   const handleDelete = async () => {
     if (!confirmDialog.id || !projectId) return;
     try {
-      await api.delete(`/projects/${projectId}/classes/${confirmDialog.id}?force=${confirmDialog.force}`);
+      await api.delete(`/projects/${projectId}/classes/${confirmDialog.id}`);
       showToast('Class deleted', 'success');
       loadData();
-      setConfirmDialog({ isOpen: false, id: null, force: false });
+      setConfirmDialog({ isOpen: false, id: null });
     } catch (err: any) {
-      if (err.response?.status === 409) {
-        setConfirmDialog({ isOpen: true, id: confirmDialog.id, force: true });
-      } else {
-        showToast(err.response?.data?.detail || 'Failed to delete', 'error');
-        setConfirmDialog({ isOpen: false, id: null, force: false });
-      }
+      showToast(err.response?.data?.detail || 'Failed to delete', 'error');
+      setConfirmDialog({ isOpen: false, id: null });
     }
   };
 
@@ -184,7 +179,7 @@ export default function ClassesPage() {
         user?.role === 'admin' ? (
           <div className="flex gap-2">
             <Button size="sm" variant="warning" onClick={() => openModal(row)}>Edit</Button>
-            <Button size="sm" variant="danger" onClick={() => setConfirmDialog({ isOpen: true, id: row.id, force: false })}>
+            <Button size="sm" variant="danger" onClick={() => setConfirmDialog({ isOpen: true, id: row.id })}>
               Delete
             </Button>
           </div>
@@ -284,15 +279,11 @@ export default function ClassesPage() {
 
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
-        onClose={() => setConfirmDialog({ isOpen: false, id: null, force: false })}
+        onClose={() => setConfirmDialog({ isOpen: false, id: null })}
         onConfirm={handleDelete}
-        title={confirmDialog.force ? 'Force Delete Class' : 'Delete Class'}
-        message={
-          confirmDialog.force
-            ? 'WARNING: There are existing annotations using this class. Force deleting will also permanently delete those annotations. Are you sure?'
-            : 'Are you sure you want to delete this class?'
-        }
-        confirmText={confirmDialog.force ? 'Force Delete' : 'Delete'}
+        title="Delete Class"
+        message="Are you sure you want to delete this class?"
+        confirmText="Delete"
         isDestructive
       />
     </div>

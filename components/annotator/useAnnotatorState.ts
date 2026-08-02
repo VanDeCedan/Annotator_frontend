@@ -19,6 +19,13 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
     const [prelabelRotationEnabled, setPrelabelRotationEnabled] = useState(false);
     const [prelabelRotationOffset, setPrelabelRotationOffset] = useState(90);
     const [imageDimensions, setImageDimensions] = useState<{width: number, height: number} | null>(null);
+
+    // Pre-label width adjustment state
+    const [prelabelWidthAdjustEnabled, setPrelabelWidthAdjustEnabled] = useState(false);
+    const [prelabelWidthAdjustAction, setPrelabelWidthAdjustAction] = useState<'reduce' | 'increase'>('reduce');
+    const [prelabelWidthAdjustAmount, setPrelabelWidthAdjustAmount] = useState(50); // integer max 90
+    const [prelabelWidthAdjustSide, setPrelabelWidthAdjustSide] = useState<'both' | 'left' | 'right'>('both');
+    const [prelabelWidthAdjustClasses, setPrelabelWidthAdjustClasses] = useState<number[]>([]);
     
     const [isSaving, setIsSaving] = useState(false);
     
@@ -117,12 +124,15 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         }));
     }, []);
 
-    // Apply rotation when toggled, offset changed, or image loads
+    // Apply rotation and width adjustments when prelabels are loaded
     useEffect(() => {
-        if (projectType === 'Yolo OBB' && prelabelStatus === 'Loaded from prelabels' && imageDimensions && originalPrelabels.length > 0) {
-            if (prelabelRotationEnabled) {
+        if (prelabelStatus === 'Loaded from prelabels' && originalPrelabels.length > 0) {
+            let updatedLabels = [...originalPrelabels];
+
+            // 1. Apply angle rotation offset if YOLO OBB & rotation enabled
+            if (projectType === 'Yolo OBB' && prelabelRotationEnabled && imageDimensions) {
                 const angleRad = (prelabelRotationOffset * Math.PI) / 180;
-                const newLabels = originalPrelabels.map(lbl => {
+                updatedLabels = updatedLabels.map(lbl => {
                     const coords = lbl.coordinates.split(' ').map(Number);
                     const parsed = parseOBBCoords(coords, imageDimensions.width, imageDimensions.height);
                     if (parsed) {
@@ -143,13 +153,100 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                     }
                     return lbl;
                 });
-                setLabels(newLabels);
-            } else {
-                // Revert to original prelabels if unchecked
-                setLabels([...originalPrelabels]);
             }
+
+            // 2. Apply width adjustment if enabled & target classes selected
+            if (prelabelWidthAdjustEnabled && prelabelWidthAdjustClasses.length > 0) {
+                const pct = Math.min(90, Math.max(1, prelabelWidthAdjustAmount)) / 100;
+                const isReduce = prelabelWidthAdjustAction === 'reduce';
+
+                updatedLabels = updatedLabels.map(lbl => {
+                    if (!prelabelWidthAdjustClasses.includes(lbl.class_code)) {
+                        return lbl;
+                    }
+
+                    const coords = lbl.coordinates.split(' ').map(Number);
+
+                    if (coords.length === 4) {
+                        let [cx, cy, w, h] = coords;
+                        const deltaW = w * pct;
+                        let newW = w;
+                        let newCx = cx;
+
+                        if (isReduce) {
+                            newW = Math.max(0.001, w - deltaW);
+                            if (prelabelWidthAdjustSide === 'both') {
+                                newCx = cx;
+                            } else if (prelabelWidthAdjustSide === 'left') {
+                                newCx = cx + deltaW / 2;
+                            } else if (prelabelWidthAdjustSide === 'right') {
+                                newCx = cx - deltaW / 2;
+                            }
+                        } else { // increase
+                            newW = Math.min(1.0, w + deltaW);
+                            if (prelabelWidthAdjustSide === 'both') {
+                                newCx = cx;
+                            } else if (prelabelWidthAdjustSide === 'left') {
+                                newCx = cx - deltaW / 2;
+                            } else if (prelabelWidthAdjustSide === 'right') {
+                                newCx = cx + deltaW / 2;
+                            }
+                        }
+
+                        return { ...lbl, coordinates: `${newCx} ${cy} ${newW} ${h}` };
+                    } else if (projectType === 'Yolo OBB' && coords.length === 8 && imageDimensions) {
+                        const parsed = parseOBBCoords(coords, imageDimensions.width, imageDimensions.height);
+                        if (parsed) {
+                            const deltaW = parsed.w * pct;
+                            let newW = parsed.w;
+                            let shiftX = 0;
+
+                            if (isReduce) {
+                                newW = Math.max(1, parsed.w - deltaW);
+                                if (prelabelWidthAdjustSide === 'left') {
+                                    shiftX = deltaW / 2;
+                                } else if (prelabelWidthAdjustSide === 'right') {
+                                    shiftX = -deltaW / 2;
+                                }
+                            } else { // increase
+                                newW = parsed.w + deltaW;
+                                if (prelabelWidthAdjustSide === 'left') {
+                                    shiftX = -deltaW / 2;
+                                } else if (prelabelWidthAdjustSide === 'right') {
+                                    shiftX = deltaW / 2;
+                                }
+                            }
+
+                            const ncx = parsed.cx + shiftX * Math.cos(parsed.angle);
+                            const ncy = parsed.cy + shiftX * Math.sin(parsed.angle);
+
+                            const nbox = { cx: ncx, cy: ncy, w: newW, h: parsed.h, angle: parsed.angle };
+                            const corners = getOBBCorners(nbox);
+                            const norm = corners.map(pt => `${pt.x / imageDimensions.width} ${pt.y / imageDimensions.height}`);
+                            return { ...lbl, coordinates: norm.join(' ') };
+                        }
+                    }
+                    return lbl;
+                });
+            }
+
+            setLabels(updatedLabels);
         }
-    }, [prelabelRotationEnabled, prelabelRotationOffset, imageDimensions, originalPrelabels, prelabelStatus, projectType, parseOBBCoords, getOBBCorners]);
+    }, [
+        prelabelStatus,
+        originalPrelabels,
+        projectType,
+        prelabelRotationEnabled,
+        prelabelRotationOffset,
+        prelabelWidthAdjustEnabled,
+        prelabelWidthAdjustAction,
+        prelabelWidthAdjustAmount,
+        prelabelWidthAdjustSide,
+        prelabelWidthAdjustClasses,
+        imageDimensions,
+        parseOBBCoords,
+        getOBBCorners
+    ]);
 
     const onImageLoaded = (width: number, height: number) => {
         setImageDimensions({ width, height });
@@ -281,6 +378,16 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         setPrelabelRotationEnabled,
         prelabelRotationOffset,
         setPrelabelRotationOffset,
+        prelabelWidthAdjustEnabled,
+        setPrelabelWidthAdjustEnabled,
+        prelabelWidthAdjustAction,
+        setPrelabelWidthAdjustAction,
+        prelabelWidthAdjustAmount,
+        setPrelabelWidthAdjustAmount,
+        prelabelWidthAdjustSide,
+        setPrelabelWidthAdjustSide,
+        prelabelWidthAdjustClasses,
+        setPrelabelWidthAdjustClasses,
         onImageLoaded,
         markEmptyAndNext
     };

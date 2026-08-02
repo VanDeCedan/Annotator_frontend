@@ -278,6 +278,9 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                                 <span>Gaussian Blur</span>
                             </label>
                         </div>
+                        <p className="mt-3 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+                            ℹ Data augmentation is applied exclusively to the Training set. Validation and Test sets receive only original un-augmented images.
+                        </p>
                     </div>
                 </div>
             </div>
