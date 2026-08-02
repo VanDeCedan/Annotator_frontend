@@ -19,6 +19,7 @@ interface AugOptions {
 }
 
 interface ExportConfig {
+  export_mode: 'full' | 'crop';
   yolo_version: string;
   resize: string;
   split_enabled: boolean;
@@ -102,6 +103,7 @@ export default function DatasetPage() {
   const [totalSelected, setTotalSelected] = useState(0);
 
   const [config, setConfig] = useState<ExportConfig>({
+    export_mode: 'full',
     yolo_version: 'v8',
     resize: '',
     split_enabled: true,
@@ -119,6 +121,7 @@ export default function DatasetPage() {
       num_augs: 3,
     },
   });
+
 
   const [projects, setProjects] = useState<any[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -193,6 +196,7 @@ export default function DatasetPage() {
 
       const payload: any = {
         session_id: "local_workspace",
+        export_mode: isYolo ? config.export_mode : 'full',
         resize: config.resize.trim() || null,
         split_enabled: config.split_enabled,
         train_pct: config.train_pct,
@@ -201,6 +205,7 @@ export default function DatasetPage() {
         yolo_version: config.yolo_version,
         augmentation: config.aug_enabled ? config.augmentation : null,
       };
+
 
       const res = await api.post(`/projects/${projectId}/dataset/generate`, payload, {
         responseType: 'blob',
@@ -362,8 +367,52 @@ export default function DatasetPage() {
       <div className={`transition-opacity duration-300 opacity-100`}>
       {/* ── Section 2: Format Settings ────────────────────────────────────── */}
       <SectionCard title="⚙️ Format Settings">
-        {/* YOLO version — only for YOLO projects */}
+        {/* Export Specification — only for YOLO & YOLO OBB projects */}
         {isYolo && (
+          <div className="mb-6 border-b border-gray-200 pb-4">
+            <label className="block text-sm font-bold text-black mb-2">Export Output Specification</label>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, export_mode: 'full' }))}
+                className={`p-4 rounded border text-left transition flex flex-col justify-between ${
+                  config.export_mode === 'full'
+                    ? 'border-blue-600 bg-blue-50 text-blue-900 font-medium ring-1 ring-blue-600'
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-bold">🖼️ Full Images & Labels</span>
+                  {config.export_mode === 'full' && <span className="text-blue-600 text-xs font-semibold">✓ Selected</span>}
+                </div>
+                <span className="text-xs text-gray-500">
+                  Exports full images with YOLO bounding box text label files (.txt) & data.yaml
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, export_mode: 'crop' }))}
+                className={`p-4 rounded border text-left transition flex flex-col justify-between ${
+                  config.export_mode === 'crop'
+                    ? 'border-blue-600 bg-blue-50 text-blue-900 font-medium ring-1 ring-blue-600'
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-bold">✂️ Sliced Box Crops</span>
+                  {config.export_mode === 'crop' && <span className="text-blue-600 text-xs font-semibold">✓ Selected</span>}
+                </div>
+                <span className="text-xs text-gray-500">
+                  Uses bounding boxes as a slicer to output cropped sub-images per class folder
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* YOLO version — only for YOLO projects in full export mode */}
+        {isYolo && config.export_mode === 'full' && (
           <div className="mb-4">
             <label className="block text-sm font-medium text-black mb-1">YOLO Format Version</label>
             <select
@@ -407,6 +456,7 @@ export default function DatasetPage() {
           <p className="text-xs text-gray-500 mt-1">Select dimensions to scale images. Leave as &quot;No Resize&quot; to keep original size.</p>
         </div>
       </SectionCard>
+
 
       {/* ── Section 3: Train / Val / Test Split ───────────────────────────── */}
       <SectionCard title="📂 Train / Val / Test Split">

@@ -54,6 +54,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
     };
 
     // Step 3: Settings
+    const [exportMode, setExportMode] = useState<'full' | 'crop'>('full');
     const [resize, setResize] = useState('');
     const [yoloVersion, setYoloVersion] = useState('v8');
     
@@ -101,6 +102,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
             // Generate and Download
             const payload = {
                 session_id: sessionId,
+                export_mode: ['Yolo', 'Yolo OBB'].includes(projectType) ? exportMode : 'full',
                 resize: resize || null,
                 split_enabled: splitEnabled,
                 train_pct: trainPct,
@@ -121,6 +123,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
             const res = await api.post(`/projects/${projectId}/dataset/generate`, payload, {
                 responseType: 'blob'
             });
+
             
             // Trigger download
             const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -188,10 +191,54 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                 <div className={`transition-opacity duration-300 ${matchedFiles.length > 0 ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
                     <h3 className="text-base font-bold text-black mb-4">2. Configure Generation Options</h3>
                     
+                    {/* Export Mode (YOLO & YOLO OBB) */}
+                    {['Yolo', 'Yolo OBB'].includes(projectType) && (
+                        <div className="mb-6 bg-white border border-gray-200 rounded p-4">
+                            <label className="block text-sm font-bold text-black mb-2">Export Output Specification</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setExportMode('full')}
+                                    className={`p-3 rounded border text-left transition flex flex-col justify-between ${
+                                        exportMode === 'full'
+                                            ? 'border-blue-600 bg-blue-50 text-blue-900 font-medium ring-1 ring-blue-600'
+                                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-sm font-bold">🖼️ Full Images & Labels</span>
+                                        {exportMode === 'full' && <span className="text-blue-600 text-xs">✓ Active</span>}
+                                    </div>
+                                    <span className="text-xs text-gray-500">
+                                        Full images + bounding box YOLO label files (.txt) & data.yaml
+                                    </span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setExportMode('crop')}
+                                    className={`p-3 rounded border text-left transition flex flex-col justify-between ${
+                                        exportMode === 'crop'
+                                            ? 'border-blue-600 bg-blue-50 text-blue-900 font-medium ring-1 ring-blue-600'
+                                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-sm font-bold">✂️ Sliced Box Crops</span>
+                                        {exportMode === 'crop' && <span className="text-blue-600 text-xs">✓ Active</span>}
+                                    </div>
+                                    <span className="text-xs text-gray-500">
+                                        Uses boxes as a slicer to output cropped sub-images per class
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Format Settings */}
                     <div className="mb-6">
                         <div className="grid grid-cols-2 gap-4">
-                            {['Yolo', 'Yolo OBB'].includes(projectType) && (
+                            {['Yolo', 'Yolo OBB'].includes(projectType) && exportMode === 'full' && (
                                 <div>
                                     <label className="block text-sm text-gray-700 mb-1">YOLO Format</label>
                                     <select 
@@ -204,7 +251,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                                     </select>
                                 </div>
                             )}
-                            <div>
+                            <div className={['Yolo', 'Yolo OBB'].includes(projectType) && exportMode === 'crop' ? 'col-span-2' : ''}>
                                 <Input 
                                     label="Resize (e.g. 640x640) - Optional" 
                                     value={resize} 
@@ -214,6 +261,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                             </div>
                         </div>
                     </div>
+
 
                     {/* Train/Test Split */}
                     <div className="border-t border-gray-300 pt-4 mb-6">
