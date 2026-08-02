@@ -96,6 +96,18 @@ export default function AnnotatePage() {
   const [doubleClickRotationEnabled, setDoubleClickRotationEnabled] = useState(false);
   const [inheritFirstBoxAngle, setInheritFirstBoxAngle] = useState(false);
   const [zoomToAreaEnabled, setZoomToAreaEnabled] = useState(false);
+  const [autoAdvanceClass, setAutoAdvanceClass] = useState(false);
+
+  // Advance to the next class in sorted order after each annotation
+  const handleAnnotationAdded = () => {
+    if (!autoAdvanceClass || classes.length < 2) return;
+    setActiveClassCode((prev) => {
+      const sorted = [...classes].sort((a, b) => a.code - b.code);
+      const idx = sorted.findIndex((c) => c.code === prev);
+      const next = sorted[(idx + 1) % sorted.length];
+      return next.code;
+    });
+  };
 
   // Sidebar resizer state
   const [sidebarWidth, setSidebarWidth] = useState(288); // Default 288px (Tailwind w-72)
@@ -200,34 +212,181 @@ export default function AnnotatePage() {
       )}
 
       <div className="flex flex-1 overflow-hidden" style={{ cursor: isResizingSidebar ? 'col-resize' : 'default' }}>
-        
-        {/* Left config panel for Yolo and Yolo OBB */}
-        {(projectType === 'Yolo' || projectType === 'Yolo OBB') && (
-          <div className="w-64 flex flex-col shrink-0 bg-white border-r border-gray-200 h-full overflow-y-auto">
-            <div className="w-full p-4">
+
+
+        {/* Canvas */}
+        <div className="flex-1 flex flex-col relative focus:outline-none" tabIndex={0}>
+          {imageUrl ? (
+            <AnnotatorCanvas
+              imageUrl={imageUrl}
+              projectType={projectType}
+              labels={labels}
+              onLabelsChange={setLabels}
+              activeClassCode={activeClassCode}
+              classes={classes}
+              selectedLabelIndex={selectedLabelIndex}
+              setSelectedLabelIndex={setSelectedLabelIndex}
+              rotationStep={rotationStep}
+              autoAdaptBox={autoAdaptBox}
+              doubleClickRotationEnabled={doubleClickRotationEnabled}
+              inheritFirstBoxAngle={inheritFirstBoxAngle}
+              zoomToAreaEnabled={zoomToAreaEnabled}
+              setZoomToAreaEnabled={setZoomToAreaEnabled}
+              onImageLoad={onImageLoaded}
+              onAnnotationAdded={handleAnnotationAdded}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center bg-[#EAEEF5]">
+              <svg className="animate-spin h-10 w-10 text-blue-500" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            </div>
+          )}
+
+          {/* Navigation controls */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-white border border-gray-300 px-4 py-2 rounded shadow text-black z-10">
+            <button
+              onClick={() => {
+                if(window.confirm('Are you sure you want to delete all labels on this image?')) {
+                  setLabels([]);
+                  if (setSelectedLabelIndex) setSelectedLabelIndex(null);
+                }
+              }}
+              className="px-2 py-1 bg-red-50 text-red-600 rounded border border-red-200 hover:bg-red-100 text-xs font-medium"
+              title="Clear all labels on this image"
+            >
+              Clear All
+            </button>
+            {(projectType === 'Yolo' || projectType === 'Yolo OBB') && (
+              <button
+                onClick={() => {
+                  if(window.confirm('Mark this image as background (empty) and go to next?')) {
+                    markEmptyAndNext();
+                  }
+                }}
+                className="px-2 py-1 bg-yellow-50 text-yellow-700 rounded border border-yellow-200 hover:bg-yellow-100 text-xs font-medium whitespace-nowrap"
+                title="Mark image as empty background and go next"
+              >
+                Mark Empty
+              </button>
+            )}
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            
+            <button
+              onClick={prevImage}
+              disabled={!canPrev}
+              className={`p-1 rounded transition-colors ${canPrev ? 'hover:bg-gray-100 text-black' : 'text-gray-300 cursor-not-allowed'}`}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <span className="text-sm font-semibold min-w-[70px] text-center">
+              {currentIndex + 1} / {imageNames.length}
+            </span>
+            <button
+              onClick={nextImage}
+              disabled={!canNext}
+              className={`p-1 rounded transition-colors ${canNext ? 'hover:bg-gray-100 text-black' : 'text-gray-300 cursor-not-allowed'}`}
+              title="Save & Next"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            <button
+              onClick={skipImage}
+              disabled={!canNext}
+              className={`px-2 py-1 rounded border transition-colors text-xs font-medium ${canNext ? 'bg-gray-50 border-gray-300 hover:bg-gray-200 text-gray-700' : 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'}`}
+              title="Skip without saving"
+            >
+              Skip
+            </button>
+            <div className="flex items-center gap-1 ml-2 border-l border-gray-300 pl-3">
+              <span className="text-xs text-gray-500 font-medium">Jump:</span>
+              <input 
+                type="number" 
+                min={1} 
+                max={imageNames.length}
+                placeholder="#"
+                className="w-14 border border-gray-300 rounded px-1 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const val = parseInt(e.currentTarget.value);
+                    if (!isNaN(val) && val >= 1 && val <= imageNames.length) {
+                       jumpToImage(val - 1);
+                       e.currentTarget.value = '';
+                    }
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Resizer Handle */}
+        <div 
+          onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebar(true); }}
+          className={`w-1 cursor-col-resize shrink-0 transition-colors border-l border-gray-300 ${isResizingSidebar ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-300'}`}
+          style={{ zIndex: 50 }}
+        />
+
+        {/* Right panel wrapper */}
+        <div className="flex flex-col h-full shrink-0 bg-white overflow-y-auto" style={{ width: sidebarWidth }}>
+          {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'Classification') && (
+            <ClassPanel
+              classes={classes}
+              activeClassCode={activeClassCode}
+              onSelectClass={(code) => {
+                setActiveClassCode(code);
+                // If a box is selected, change its class!
+                if (selectedLabelIndex !== null) {
+                  setLabels(prev => {
+                    const newLabels = [...prev];
+                    newLabels[selectedLabelIndex] = { ...newLabels[selectedLabelIndex], class_code: code };
+                    return newLabels;
+                  });
+                }
+              }}
+              projectType={projectType}
+              selectedLabelIndex={selectedLabelIndex}
+              labels={labels}
+            />
+          )}
+
+          {projectType === 'Ocr' && (
+            <OCRPanel 
+              value={ocrValue} 
+              onChange={setOcrValue} 
+              onNext={canNext ? nextImage : undefined}
+              onPrev={canPrev ? prevImage : undefined}
+            />
+          )}
+
+          {/* Annotation Tools — merged below Classes in the right sidebar */}
+          {(projectType === 'Yolo' || projectType === 'Yolo OBB') && (
+            <div className="w-full p-4 border-t border-gray-200">
               <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
                 Annotation Tools
               </label>
 
+              {/* Auto-advance class */}
               <label className={`flex items-center gap-2.5 cursor-pointer p-2.5 rounded-lg border transition-all mb-3 ${
-                zoomToAreaEnabled 
-                  ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' 
+                autoAdvanceClass
+                  ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm'
                   : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
               }`}>
                 <input
                   type="checkbox"
-                  checked={zoomToAreaEnabled}
-                  onChange={(e) => setZoomToAreaEnabled(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                  checked={autoAdvanceClass}
+                  onChange={(e) => setAutoAdvanceClass(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"
                 />
                 <div className="flex flex-col">
-                  <span className="text-sm font-semibold flex items-center gap-1.5">
-                    <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
-                    </svg>
-                    Area Zoom Mode
-                  </span>
-                  <span className="text-[11px] text-gray-500 font-normal">Drag box to zoom into area</span>
+                  <span className="text-sm font-semibold">Auto-advance class</span>
+                  <span className="text-[11px] text-gray-500 font-normal">Next annotation uses the next class</span>
                 </div>
               </label>
 
@@ -255,7 +414,7 @@ export default function AnnotatePage() {
                     />
                     <span className="text-sm text-gray-700 font-medium">Auto-adapt box to angles</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 cursor-pointer mt-3">
                     <input
                       type="checkbox"
@@ -265,7 +424,7 @@ export default function AnnotatePage() {
                     />
                     <span className="text-sm text-gray-700 font-medium">Enable double-click rotation</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 cursor-pointer mt-3">
                     <input
                       type="checkbox"
@@ -452,157 +611,6 @@ export default function AnnotatePage() {
                 )}
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Canvas */}
-        <div className="flex-1 flex flex-col relative focus:outline-none" tabIndex={0}>
-          {imageUrl ? (
-            <AnnotatorCanvas
-              imageUrl={imageUrl}
-              projectType={projectType}
-              labels={labels}
-              onLabelsChange={setLabels}
-              activeClassCode={activeClassCode}
-              classes={classes}
-              selectedLabelIndex={selectedLabelIndex}
-              setSelectedLabelIndex={setSelectedLabelIndex}
-              rotationStep={rotationStep}
-              autoAdaptBox={autoAdaptBox}
-              doubleClickRotationEnabled={doubleClickRotationEnabled}
-              inheritFirstBoxAngle={inheritFirstBoxAngle}
-              zoomToAreaEnabled={zoomToAreaEnabled}
-              setZoomToAreaEnabled={setZoomToAreaEnabled}
-              onImageLoad={onImageLoaded}
-            />
-          ) : (
-            <div className="flex-1 flex items-center justify-center bg-[#EAEEF5]">
-              <svg className="animate-spin h-10 w-10 text-blue-500" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-            </div>
-          )}
-
-          {/* Navigation controls */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-white border border-gray-300 px-4 py-2 rounded shadow text-black z-10">
-            <button
-              onClick={() => {
-                if(window.confirm('Are you sure you want to delete all labels on this image?')) {
-                  setLabels([]);
-                  if (setSelectedLabelIndex) setSelectedLabelIndex(null);
-                }
-              }}
-              className="px-2 py-1 bg-red-50 text-red-600 rounded border border-red-200 hover:bg-red-100 text-xs font-medium"
-              title="Clear all labels on this image"
-            >
-              Clear All
-            </button>
-            {(projectType === 'Yolo' || projectType === 'Yolo OBB') && (
-              <button
-                onClick={() => {
-                  if(window.confirm('Mark this image as background (empty) and go to next?')) {
-                    markEmptyAndNext();
-                  }
-                }}
-                className="px-2 py-1 bg-yellow-50 text-yellow-700 rounded border border-yellow-200 hover:bg-yellow-100 text-xs font-medium whitespace-nowrap"
-                title="Mark image as empty background and go next"
-              >
-                Mark Empty
-              </button>
-            )}
-            <div className="w-px h-6 bg-gray-300 mx-1"></div>
-            
-            <button
-              onClick={prevImage}
-              disabled={!canPrev}
-              className={`p-1 rounded transition-colors ${canPrev ? 'hover:bg-gray-100 text-black' : 'text-gray-300 cursor-not-allowed'}`}
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <span className="text-sm font-semibold min-w-[70px] text-center">
-              {currentIndex + 1} / {imageNames.length}
-            </span>
-            <button
-              onClick={nextImage}
-              disabled={!canNext}
-              className={`p-1 rounded transition-colors ${canNext ? 'hover:bg-gray-100 text-black' : 'text-gray-300 cursor-not-allowed'}`}
-              title="Save & Next"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-            <div className="w-px h-6 bg-gray-300 mx-1"></div>
-            <button
-              onClick={skipImage}
-              disabled={!canNext}
-              className={`px-2 py-1 rounded border transition-colors text-xs font-medium ${canNext ? 'bg-gray-50 border-gray-300 hover:bg-gray-200 text-gray-700' : 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'}`}
-              title="Skip without saving"
-            >
-              Skip
-            </button>
-            <div className="flex items-center gap-1 ml-2 border-l border-gray-300 pl-3">
-              <span className="text-xs text-gray-500 font-medium">Jump:</span>
-              <input 
-                type="number" 
-                min={1} 
-                max={imageNames.length}
-                placeholder="#"
-                className="w-14 border border-gray-300 rounded px-1 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    const val = parseInt(e.currentTarget.value);
-                    if (!isNaN(val) && val >= 1 && val <= imageNames.length) {
-                       jumpToImage(val - 1);
-                       e.currentTarget.value = '';
-                    }
-                  }
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Resizer Handle */}
-        <div 
-          onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebar(true); }}
-          className={`w-1 cursor-col-resize shrink-0 transition-colors border-l border-gray-300 ${isResizingSidebar ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-300'}`}
-          style={{ zIndex: 50 }}
-        />
-
-        {/* Right panel wrapper */}
-        <div className="flex flex-col h-full shrink-0 bg-white" style={{ width: sidebarWidth }}>
-          {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'Classification') && (
-            <ClassPanel
-              classes={classes}
-              activeClassCode={activeClassCode}
-              onSelectClass={(code) => {
-                setActiveClassCode(code);
-                // If a box is selected, change its class!
-                if (selectedLabelIndex !== null) {
-                  setLabels(prev => {
-                    const newLabels = [...prev];
-                    newLabels[selectedLabelIndex] = { ...newLabels[selectedLabelIndex], class_code: code };
-                    return newLabels;
-                  });
-                }
-              }}
-              projectType={projectType}
-              selectedLabelIndex={selectedLabelIndex}
-              labels={labels}
-            />
-          )}
-
-          {projectType === 'Ocr' && (
-            <OCRPanel 
-              value={ocrValue} 
-              onChange={setOcrValue} 
-              onNext={canNext ? nextImage : undefined}
-              onPrev={canPrev ? prevImage : undefined}
-            />
           )}
         </div>
       </div>

@@ -23,6 +23,8 @@ interface AnnotatorCanvasProps {
     zoomToAreaEnabled?: boolean;
     setZoomToAreaEnabled?: (enabled: boolean) => void;
     onImageLoad?: (width: number, height: number) => void;
+    /** Called each time a new annotation box is successfully drawn. */
+    onAnnotationAdded?: () => void;
 }
 
 // Helper removed
@@ -93,7 +95,8 @@ export function AnnotatorCanvas({
     inheritFirstBoxAngle = false,
     zoomToAreaEnabled = false,
     setZoomToAreaEnabled,
-    onImageLoad
+    onImageLoad,
+    onAnnotationAdded,
 }: AnnotatorCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -755,6 +758,7 @@ export function AnnotatorCanvas({
                 const newLbls = [...labels, { class_code: activeClassCode!, coordinates: coords }];
                 onLabelsChange(newLbls);
                 if (setSelectedLabelIndex) setSelectedLabelIndex(newLbls.length - 1);
+                if (onAnnotationAdded) onAnnotationAdded();
             }
             setCurrentPoints([]);
         } else if (mode === 'dragging_box' || mode === 'resizing_yolo' || mode === 'resizing_obb' || mode === 'rotating_obb') {

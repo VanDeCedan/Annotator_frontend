@@ -18,7 +18,7 @@ interface ClassPanelProps {
 
 export function ClassPanel({ classes, activeClassCode, onSelectClass, projectType, selectedLabelIndex, labels = [] }: ClassPanelProps) {
   return (
-    <div className="w-full bg-white flex flex-col h-full">
+    <div className="w-full bg-white flex flex-col min-h-0">
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-200 bg-gray-100">
         <h2 className="text-xs font-bold text-black uppercase tracking-wider">Classes</h2>
@@ -32,7 +32,7 @@ export function ClassPanel({ classes, activeClassCode, onSelectClass, projectTyp
       </div>
 
       {/* Class list */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="overflow-y-auto max-h-64 p-2 space-y-1">
         {classes.length === 0 ? (
           <div className="text-center text-sm text-gray-500 py-8">No classes defined</div>
         ) : (

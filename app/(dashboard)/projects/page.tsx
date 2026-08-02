@@ -27,6 +27,19 @@ export default function ProjectsPage() {
     id: null,
   });
 
+  // Hard-delete dialog state
+  const [deleteDialog, setDeleteDialog] = useState<{
+    isOpen: boolean;
+    project: any | null;
+    nameInput: string;
+    isDeleting: boolean;
+  }>({
+    isOpen: false,
+    project: null,
+    nameInput: '',
+    isDeleting: false,
+  });
+
   const loadProjects = async () => {
     try {
       const res = await api.get('/projects');
@@ -75,6 +88,20 @@ export default function ProjectsPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!deleteDialog.project) return;
+    setDeleteDialog((d) => ({ ...d, isDeleting: true }));
+    try {
+      await api.delete(`/projects/${deleteDialog.project.id}`);
+      showToast(`Project "${deleteDialog.project.name}" permanently deleted`, 'success');
+      setDeleteDialog({ isOpen: false, project: null, nameInput: '', isDeleting: false });
+      loadProjects();
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to delete project', 'error');
+      setDeleteDialog((d) => ({ ...d, isDeleting: false }));
+    }
+  };
+
   const openModal = (project?: any) => {
     if (project) {
       setEditingId(project.id);
@@ -85,6 +112,13 @@ export default function ProjectsPage() {
     }
     setIsModalOpen(true);
   };
+
+  const openDeleteDialog = (project: any) => {
+    setDeleteDialog({ isOpen: true, project, nameInput: '', isDeleting: false });
+  };
+
+  const deleteNameMatches =
+    deleteDialog.project && deleteDialog.nameInput === deleteDialog.project.name;
 
   const columns = [
     { header: 'ID', accessorKey: 'id' as const },
@@ -125,6 +159,9 @@ export default function ProjectsPage() {
               </Button>
               <Button size="sm" variant="danger" onClick={() => setConfirmDialog({ isOpen: true, id: row.id })}>
                 Deactivate
+              </Button>
+              <Button size="sm" variant="danger" onClick={() => openDeleteDialog(row)}>
+                Delete
               </Button>
             </>
           )}
@@ -183,6 +220,7 @@ export default function ProjectsPage() {
         </form>
       </Modal>
 
+      {/* Deactivate ConfirmDialog */}
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
         onClose={() => setConfirmDialog({ isOpen: false, id: null })}
@@ -192,6 +230,76 @@ export default function ProjectsPage() {
         confirmText="Deactivate"
         isDestructive
       />
+
+      {/* Hard-Delete Modal — requires typing the project name */}
+      <Modal
+        isOpen={deleteDialog.isOpen}
+        onClose={() => !deleteDialog.isDeleting && setDeleteDialog({ isOpen: false, project: null, nameInput: '', isDeleting: false })}
+        title="Permanently Delete Project"
+      >
+        <div className="space-y-4">
+          {/* Warning banner */}
+          <div className="flex gap-3 p-3 bg-red-50 border border-red-300 rounded-lg">
+            <svg className="w-5 h-5 text-red-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <div>
+              <p className="text-sm font-bold text-red-700">This action is irreversible.</p>
+              <p className="text-sm text-red-600 mt-0.5">
+                All annotations, classes, and images stored on the server for{' '}
+                <span className="font-semibold">"{deleteDialog.project?.name}"</span>{' '}
+                will be permanently deleted from the database and disk.
+              </p>
+            </div>
+          </div>
+
+          {/* Name confirmation input */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              Type the project name to confirm:{' '}
+              <span className="font-mono text-red-600 select-none">{deleteDialog.project?.name}</span>
+            </label>
+            <input
+              type="text"
+              value={deleteDialog.nameInput}
+              onChange={(e) => setDeleteDialog((d) => ({ ...d, nameInput: e.target.value }))}
+              placeholder="Enter project name exactly…"
+              disabled={deleteDialog.isDeleting}
+              className={`w-full border rounded px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 transition-colors ${
+                deleteDialog.nameInput === ''
+                  ? 'border-gray-300 focus:ring-blue-400'
+                  : deleteNameMatches
+                  ? 'border-green-400 bg-green-50 focus:ring-green-400'
+                  : 'border-red-400 bg-red-50 focus:ring-red-400'
+              }`}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {deleteDialog.nameInput !== '' && !deleteNameMatches && (
+              <p className="text-xs text-red-500 mt-1">Name does not match — check capitalisation.</p>
+            )}
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+            <Button
+              variant="ghost"
+              onClick={() => setDeleteDialog({ isOpen: false, project: null, nameInput: '', isDeleting: false })}
+              disabled={deleteDialog.isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleDelete}
+              disabled={!deleteNameMatches || deleteDialog.isDeleting}
+              isLoading={deleteDialog.isDeleting}
+            >
+              Delete Forever
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
