@@ -21,6 +21,7 @@ export default function PreLabelsPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
 
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; id: number | null }>({
     isOpen: false,
@@ -67,18 +68,24 @@ export default function PreLabelsPage() {
 
     setIsSubmitting(true);
     setValidationErrors([]);
-
-    const formData = new FormData();
-    selectedFiles.forEach((file) => {
-      formData.append('files', file);
-    });
+    setUploadProgress({ current: 0, total: selectedFiles.length });
+    const chunkSize = 200;
 
     try {
-      await api.post(`/projects/${selectedProjectId}/prelabels`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      for (let i = 0; i < selectedFiles.length; i += chunkSize) {
+        const chunk = selectedFiles.slice(i, i + chunkSize);
+        const formData = new FormData();
+        chunk.forEach((file) => formData.append('files', file));
+
+        await api.post(`/projects/${selectedProjectId}/prelabels`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+
+        const currentCount = Math.min(i + chunk.length, selectedFiles.length);
+        setUploadProgress({ current: currentCount, total: selectedFiles.length });
+      }
       showToast('Pre-labels uploaded successfully', 'success');
       setIsModalOpen(false);
       setSelectedFiles([]);
@@ -92,6 +99,7 @@ export default function PreLabelsPage() {
       }
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(null);
     }
   };
 
@@ -190,10 +198,29 @@ export default function PreLabelsPage() {
             </div>
             {selectedFiles.length > 0 && (
               <p className="mt-2 text-sm text-green-600 font-medium">
-                {selectedFiles.length} file(s) selected ready to upload.
+                {selectedFiles.length.toLocaleString()} file(s) selected ready to upload.
               </p>
             )}
           </div>
+
+          {isSubmitting && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex justify-between text-xs font-semibold text-blue-800 mb-1">
+                <span>Uploading and validating prelabels...</span>
+                <span>
+                  {uploadProgress ? `${uploadProgress.current.toLocaleString()} / ${uploadProgress.total.toLocaleString()}` : 'Processing...'}
+                </span>
+              </div>
+              {uploadProgress && (
+                <div className="w-full bg-blue-200 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-200"
+                    style={{ width: `${Math.round((uploadProgress.current / uploadProgress.total) * 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {validationErrors.length > 0 && (
             <div className="mt-4 bg-red-50 border-l-4 border-red-400 p-4 max-h-40 overflow-y-auto">

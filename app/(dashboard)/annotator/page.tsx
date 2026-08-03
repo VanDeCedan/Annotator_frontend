@@ -27,6 +27,10 @@ export default function AnnotatorSetupPage() {
   const [boxImagesCount, setBoxImagesCount] = useState<number>(0);
   const [isUploadingBoxImages, setIsUploadingBoxImages] = useState(false);
 
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [prelabelsProgress, setPrelabelsProgress] = useState<{ current: number; total: number } | null>(null);
+  const [boxImagesProgress, setBoxImagesProgress] = useState<{ current: number; total: number } | null>(null);
+
   const loadBoxImagesData = useCallback(async (id: string) => {
     try {
       const res = await api.get(`/projects/${id}/box-images`);
@@ -101,10 +105,11 @@ export default function AnnotatorSetupPage() {
 
   const handleUploadImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    setIsUploading(true);
-    
     const filesArray = Array.from(e.target.files);
-    const chunkSize = 500;
+    setIsUploading(true);
+    setUploadProgress({ current: 0, total: filesArray.length });
+    
+    const chunkSize = 200;
 
     try {
       for (let i = 0; i < filesArray.length; i += chunkSize) {
@@ -115,6 +120,9 @@ export default function AnnotatorSetupPage() {
         await api.post(`/projects/${projectId}/images/upload`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
+
+        const currentCount = Math.min(i + chunk.length, filesArray.length);
+        setUploadProgress({ current: currentCount, total: filesArray.length });
       }
       showToast(`Successfully added ${filesArray.length} images to project workspace`, 'success');
       loadWorkspaceData(projectId!);
@@ -122,15 +130,17 @@ export default function AnnotatorSetupPage() {
       showToast('Failed to upload some images', 'error');
     } finally {
       setIsUploading(false);
+      setUploadProgress(null);
       if (e.target) e.target.value = '';
     }
   };
 
   const handleUploadPrelabels = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    setIsUploadingPrelabels(true);
     const filesArray = Array.from(e.target.files);
-    const chunkSize = 500; // FastAPI limit is 1000
+    setIsUploadingPrelabels(true);
+    setPrelabelsProgress({ current: 0, total: filesArray.length });
+    const chunkSize = 200;
 
     try {
       for (let i = 0; i < filesArray.length; i += chunkSize) {
@@ -141,6 +151,9 @@ export default function AnnotatorSetupPage() {
         await api.post(`/projects/${projectId}/prelabels`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
+
+        const currentCount = Math.min(i + chunk.length, filesArray.length);
+        setPrelabelsProgress({ current: currentCount, total: filesArray.length });
       }
       showToast(`Successfully uploaded ${filesArray.length} prelabels`, 'success');
     } catch (err: any) {
@@ -158,6 +171,7 @@ export default function AnnotatorSetupPage() {
       }
     } finally {
       setIsUploadingPrelabels(false);
+      setPrelabelsProgress(null);
       if (e.target) e.target.value = '';
     }
   };
@@ -174,21 +188,32 @@ export default function AnnotatorSetupPage() {
 
   const handleUploadBoxImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    setIsUploadingBoxImages(true);
     const filesArray = Array.from(e.target.files);
-    const formData = new FormData();
-    filesArray.forEach((file) => formData.append('files', file));
+    setIsUploadingBoxImages(true);
+    setBoxImagesProgress({ current: 0, total: filesArray.length });
+
+    const chunkSize = 200;
 
     try {
-      await api.post(`/projects/${projectId}/box-images/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      for (let i = 0; i < filesArray.length; i += chunkSize) {
+        const chunk = filesArray.slice(i, i + chunkSize);
+        const formData = new FormData();
+        chunk.forEach((file) => formData.append('files', file));
+
+        await api.post(`/projects/${projectId}/box-images/upload`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+
+        const currentCount = Math.min(i + chunk.length, filesArray.length);
+        setBoxImagesProgress({ current: currentCount, total: filesArray.length });
+      }
       showToast(`Successfully uploaded ${filesArray.length} box images`, 'success');
       loadBoxImagesData(projectId!);
     } catch {
       showToast('Failed to upload box images', 'error');
     } finally {
       setIsUploadingBoxImages(false);
+      setBoxImagesProgress(null);
       if (e.target) e.target.value = '';
     }
   };
@@ -352,7 +377,24 @@ export default function AnnotatorSetupPage() {
             </div>
             <input type="file" multiple accept="image/*" className="hidden" onChange={handleUploadImages} disabled={isUploading} />
           </label>
-          {isUploading && <p className="text-center text-blue-600 mt-2 animate-pulse text-sm">Uploading and sorting...</p>}
+          {isUploading && (
+            <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-2.5">
+              <div className="flex justify-between text-xs font-semibold text-blue-800 mb-1">
+                <span>Uploading workspace images...</span>
+                <span>
+                  {uploadProgress ? `${uploadProgress.current.toLocaleString()} / ${uploadProgress.total.toLocaleString()}` : 'Processing...'}
+                </span>
+              </div>
+              {uploadProgress && (
+                <div className="w-full bg-blue-200 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-200"
+                    style={{ width: `${Math.round((uploadProgress.current / uploadProgress.total) * 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Box Images */}
@@ -374,6 +416,24 @@ export default function AnnotatorSetupPage() {
                 </Button>
                 <input type="file" multiple accept="image/*" className="hidden" onChange={handleUploadBoxImages} disabled={isUploadingBoxImages} />
               </label>
+              {isUploadingBoxImages && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-2.5">
+                  <div className="flex justify-between text-xs font-semibold text-purple-800 mb-1">
+                    <span>Uploading box images...</span>
+                    <span>
+                      {boxImagesProgress ? `${boxImagesProgress.current.toLocaleString()} / ${boxImagesProgress.total.toLocaleString()}` : 'Processing...'}
+                    </span>
+                  </div>
+                  {boxImagesProgress && (
+                    <div className="w-full bg-purple-200 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-purple-600 h-2 rounded-full transition-all duration-200"
+                        style={{ width: `${Math.round((boxImagesProgress.current / boxImagesProgress.total) * 100)}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
               {boxImagesCount > 0 && (
                 <Button variant="danger" className="w-full" onClick={handleClearBoxImages}>Clear All Box Images</Button>
               )}
@@ -395,6 +455,24 @@ export default function AnnotatorSetupPage() {
                 </Button>
                 <input type="file" multiple accept=".txt" className="hidden" onChange={handleUploadPrelabels} disabled={isUploadingPrelabels} />
               </label>
+              {isUploadingPrelabels && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-2.5">
+                  <div className="flex justify-between text-xs font-semibold text-green-800 mb-1">
+                    <span>Uploading prelabels...</span>
+                    <span>
+                      {prelabelsProgress ? `${prelabelsProgress.current.toLocaleString()} / ${prelabelsProgress.total.toLocaleString()}` : 'Processing...'}
+                    </span>
+                  </div>
+                  {prelabelsProgress && (
+                    <div className="w-full bg-green-200 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-green-600 h-2 rounded-full transition-all duration-200"
+                        style={{ width: `${Math.round((prelabelsProgress.current / prelabelsProgress.total) * 100)}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
               <Button variant="danger" className="w-full" onClick={handleDeletePrelabels}>Clear All Prelabels</Button>
             </div>
           </div>
