@@ -87,7 +87,17 @@ export default function AnnotatePage() {
     prelabelWidthAdjustClasses,
     setPrelabelWidthAdjustClasses,
     onImageLoaded,
-    markEmptyAndNext
+    markEmptyAndNext,
+    boxImageNames,
+    autoAddBoxImageEnabled,
+    setAutoAddBoxImageEnabled,
+    boxImageDefaultClass,
+    setBoxImageDefaultClass,
+    boxImageDefaultWidth,
+    setBoxImageDefaultWidth,
+    boxImageDefaultHeight,
+    setBoxImageDefaultHeight,
+    addRandomBoxImage
   } = useAnnotatorState(projectId, imageNames, initialIndex);
 
   const [imageUrl, setImageUrl] = useState('');
@@ -218,6 +228,7 @@ export default function AnnotatePage() {
         <div className="flex-1 flex flex-col relative focus:outline-none" tabIndex={0}>
           {imageUrl ? (
             <AnnotatorCanvas
+              projectId={projectId}
               imageUrl={imageUrl}
               projectType={projectType}
               labels={labels}
@@ -389,6 +400,90 @@ export default function AnnotatePage() {
                   <span className="text-[11px] text-gray-500 font-normal">Next annotation uses the next class</span>
                 </div>
               </label>
+
+              {/* Boxes Images Tools Section */}
+              <hr className="my-3 border-gray-200" />
+              <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-xl mb-3">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-xs font-bold text-purple-900 uppercase tracking-wider block">
+                    Boxes Images Overlay
+                  </label>
+                  <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded">
+                    {boxImageNames.length} Assets
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => addRandomBoxImage()}
+                  disabled={boxImageNames.length === 0}
+                  className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 border transition-all mb-2.5 ${
+                    boxImageNames.length > 0
+                      ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-600 shadow-sm cursor-pointer'
+                      : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                  }`}
+                  title={boxImageNames.length === 0 ? 'Upload box images in Project Setup first' : 'Add random box image on canvas'}
+                >
+                  🖼️ Add Random Box Image
+                </button>
+
+                <label className={`flex items-start gap-2 cursor-pointer p-2 rounded-lg border transition-all mb-2.5 ${
+                  autoAddBoxImageEnabled
+                    ? 'bg-purple-100 border-purple-400 text-purple-900 font-medium'
+                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={autoAddBoxImageEnabled}
+                    onChange={(e) => setAutoAddBoxImageEnabled(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 shrink-0"
+                  />
+                  <div className="flex flex-col text-xs">
+                    <span className="font-bold">Auto-add on Next Image</span>
+                    <span className="text-[10px] text-gray-500 font-normal">Places a random box image on next images until unchecked</span>
+                  </div>
+                </label>
+
+                {/* Default Box Image Settings */}
+                <div className="pt-2 border-t border-purple-200/80 text-xs space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="font-semibold text-gray-700 text-[11px]">Default Class:</label>
+                    <select
+                      value={boxImageDefaultClass !== null ? boxImageDefaultClass : (activeClassCode ?? '')}
+                      onChange={(e) => setBoxImageDefaultClass(e.target.value !== '' ? Number(e.target.value) : null)}
+                      className="border border-gray-300 rounded px-1.5 py-0.5 text-xs text-black bg-white focus:outline-none focus:ring-1 focus:ring-purple-500 max-w-[120px]"
+                    >
+                      {classes.map(c => (
+                        <option key={c.code} value={c.code}>{c.label || `Class ${c.code}`}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <label className="font-semibold text-gray-700 text-[11px]">Default Size (px):</label>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={10}
+                        max={2000}
+                        value={boxImageDefaultWidth}
+                        onChange={(e) => setBoxImageDefaultWidth(Number(e.target.value) || 50)}
+                        className="w-12 border border-gray-300 rounded px-1 py-0.5 text-center text-xs text-black"
+                        title="Width in pixels"
+                      />
+                      <span className="text-gray-400">×</span>
+                      <input
+                        type="number"
+                        min={10}
+                        max={2000}
+                        value={boxImageDefaultHeight}
+                        onChange={(e) => setBoxImageDefaultHeight(Number(e.target.value) || 50)}
+                        className="w-12 border border-gray-300 rounded px-1 py-0.5 text-center text-xs text-black"
+                        title="Height in pixels"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               {projectType === 'Yolo OBB' && (
                 <>

@@ -5,9 +5,11 @@ interface Point { x: number; y: number; }
 interface Label {
     class_code: number;
     coordinates: string; // x1 y1 x2 y2 ...
+    box_image?: string | null;
 }
 
 interface AnnotatorCanvasProps {
+    projectId?: number;
     imageUrl: string;
     projectType: string;
     labels: Label[];
@@ -81,6 +83,7 @@ function isPointInRotatedRect(px: number, py: number, box: {cx: number, cy: numb
 }
 
 export function AnnotatorCanvas({
+    projectId,
     imageUrl,
     projectType,
     labels,
@@ -103,6 +106,21 @@ export function AnnotatorCanvas({
     const [image, setImage] = useState<HTMLImageElement | null>(null);
     const [scale, setScale] = useState(1);
     const [offset, setOffset] = useState({ x: 0, y: 0 });
+    const [boxImagesCache, setBoxImagesCache] = useState<{ [name: string]: HTMLImageElement }>({});
+
+    useEffect(() => {
+        if (!projectId) return;
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        labels.forEach((lbl) => {
+            if (lbl.box_image && !boxImagesCache[lbl.box_image]) {
+                const img = new Image();
+                img.src = `${apiUrl}/projects/${projectId}/box-images/${lbl.box_image}`;
+                img.onload = () => {
+                    setBoxImagesCache((prev) => ({ ...prev, [lbl.box_image!]: img }));
+                };
+            }
+        });
+    }, [labels, projectId, boxImagesCache]);
     
     // Viewport dragging
     const [isPanning, setIsPanning] = useState(false);
@@ -258,6 +276,10 @@ export function AnnotatorCanvas({
                 ctx.translate(parsed.cx, parsed.cy);
                 ctx.rotate(parsed.angle);
 
+                if (lbl.box_image && boxImagesCache[lbl.box_image]) {
+                    ctx.drawImage(boxImagesCache[lbl.box_image], -parsed.w / 2, -parsed.h / 2, parsed.w, parsed.h);
+                }
+
                 ctx.beginPath();
                 ctx.rect(-parsed.w / 2, -parsed.h / 2, parsed.w, parsed.h);
                 ctx.fill();
@@ -317,6 +339,10 @@ export function AnnotatorCanvas({
                 const y1 = (cy - h/2) * image.height;
                 const w_px = w * image.width;
                 const h_px = h * image.height;
+
+                if (lbl.box_image && boxImagesCache[lbl.box_image]) {
+                    ctx.drawImage(boxImagesCache[lbl.box_image], x1, y1, w_px, h_px);
+                }
                 
                 ctx.beginPath();
                 ctx.rect(x1, y1, w_px, h_px);

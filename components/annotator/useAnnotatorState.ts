@@ -29,6 +29,22 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
     
     const [isSaving, setIsSaving] = useState(false);
     
+    // Box Images state
+    const [boxImageNames, setBoxImageNames] = useState<string[]>([]);
+    const [autoAddBoxImageEnabled, setAutoAddBoxImageEnabled] = useState<boolean>(false);
+    const [boxImageDefaultClass, setBoxImageDefaultClass] = useState<number | null>(null);
+    const [boxImageDefaultWidth, setBoxImageDefaultWidth] = useState<number>(150);
+    const [boxImageDefaultHeight, setBoxImageDefaultHeight] = useState<number>(150);
+
+    const fetchBoxImages = useCallback(async () => {
+        try {
+            const res = await api.get(`/projects/${projectId}/box-images`);
+            setBoxImageNames(res.data.image_names || []);
+        } catch (err) {
+            console.error('Failed to load box images', err);
+        }
+    }, [projectId]);
+
     const currentImageName = imageNames[currentIndex];
     
     useEffect(() => {
@@ -48,7 +64,8 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
             }
         };
         init();
-    }, [projectId]);
+        fetchBoxImages();
+    }, [projectId, fetchBoxImages, showToast]);
 
     useEffect(() => {
         if (!currentImageName) return;
@@ -59,15 +76,60 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                 const data = res.data;
                 
                 if (data.type === 'Yolo' || data.type === 'Yolo OBB') {
+                    let initialLabels: any[] = [];
                     if (data.prelabels && data.prelabels.length > 0 && data.labels.length === 0) {
                         setOriginalPrelabels(data.prelabels);
-                        setLabels(data.prelabels);
+                        initialLabels = data.prelabels;
                         setPrelabelStatus('Loaded from prelabels');
                     } else {
-                        setLabels(data.labels || []);
+                        initialLabels = data.labels || [];
                         setOriginalPrelabels([]);
                         setPrelabelStatus(null);
                     }
+
+                    // Auto-add random box image if enabled & no box image exists yet
+                    if (autoAddBoxImageEnabled && boxImageNames.length > 0 && !initialLabels.some(l => l.box_image)) {
+                        const randomImg = boxImageNames[Math.floor(Math.random() * boxImageNames.length)];
+                        const cx = 0.2 + Math.random() * 0.6;
+                        const cy = 0.2 + Math.random() * 0.6;
+                        const imgW = imageDimensions?.width || 1000;
+                        const imgH = imageDimensions?.height || 1000;
+                        const w = Math.max(0.02, Math.min(0.9, boxImageDefaultWidth / imgW));
+                        const h = Math.max(0.02, Math.min(0.9, boxImageDefaultHeight / imgH));
+                        const targetClass = boxImageDefaultClass !== null ? boxImageDefaultClass : (activeClassCode !== null ? activeClassCode : (classes[0]?.code ?? 0));
+
+                        let coordsStr = '';
+                        if (data.type === 'Yolo OBB') {
+                            const angle = Math.random() * Math.PI * 2;
+                            const cosA = Math.cos(angle);
+                            const sinA = Math.sin(angle);
+                            const hw = (w * imgW) / 2;
+                            const hh = (h * imgH) / 2;
+                            const centerPxX = cx * imgW;
+                            const centerPxY = cy * imgH;
+
+                            const corners = [
+                                { x: -hw, y: -hh },
+                                { x: hw, y: -hh },
+                                { x: hw, y: hh },
+                                { x: -hw, y: hh }
+                            ].map(pt => ({
+                                x: (centerPxX + pt.x * cosA - pt.y * sinA) / imgW,
+                                y: (centerPxY + pt.x * sinA + pt.y * cosA) / imgH
+                            }));
+                            coordsStr = corners.map(pt => `${pt.x} ${pt.y}`).join(' ');
+                        } else {
+                            coordsStr = `${cx} ${cy} ${w} ${h}`;
+                        }
+
+                        initialLabels = [...initialLabels, {
+                            class_code: targetClass,
+                            coordinates: coordsStr,
+                            box_image: randomImg
+                        }];
+                    }
+
+                    setLabels(initialLabels);
                 } else if (data.type === 'Classification') {
                     if (data.label !== null) setActiveClassCode(data.label);
                     else if (data.prelabel !== null) {
@@ -352,6 +414,57 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         }
     };
 
+    const addRandomBoxImage = useCallback((customPos?: { cx: number; cy: number }) => {
+        if (boxImageNames.length === 0) {
+            showToast('No box images uploaded for this project', 'error');
+            return;
+        }
+        const randomImg = boxImageNames[Math.floor(Math.random() * boxImageNames.length)];
+        const imgW = imageDimensions?.width || 1000;
+        const imgH = imageDimensions?.height || 1000;
+
+        const w = Math.max(0.02, Math.min(0.9, boxImageDefaultWidth / imgW));
+        const h = Math.max(0.02, Math.min(0.9, boxImageDefaultHeight / imgH));
+
+        const cx = customPos ? customPos.cx : 0.5;
+        const cy = customPos ? customPos.cy : 0.5;
+
+        const targetClass = boxImageDefaultClass !== null ? boxImageDefaultClass : (activeClassCode !== null ? activeClassCode : (classes[0]?.code ?? 0));
+
+        let coordsStr = '';
+        if (projectType === 'Yolo OBB') {
+            const angle = Math.random() * Math.PI * 2;
+            const cosA = Math.cos(angle);
+            const sinA = Math.sin(angle);
+            const hw = (w * imgW) / 2;
+            const hh = (h * imgH) / 2;
+            const centerPxX = cx * imgW;
+            const centerPxY = cy * imgH;
+
+            const corners = [
+                { x: -hw, y: -hh },
+                { x: hw, y: -hh },
+                { x: hw, y: hh },
+                { x: -hw, y: hh }
+            ].map(pt => ({
+                x: (centerPxX + pt.x * cosA - pt.y * sinA) / imgW,
+                y: (centerPxY + pt.x * sinA + pt.y * cosA) / imgH
+            }));
+            coordsStr = corners.map(pt => `${pt.x} ${pt.y}`).join(' ');
+        } else {
+            coordsStr = `${cx} ${cy} ${w} ${h}`;
+        }
+
+        const newLbl = {
+            class_code: targetClass,
+            coordinates: coordsStr,
+            box_image: randomImg
+        };
+
+        setLabels(prev => [...prev, newLbl]);
+        showToast(`Added box image (${randomImg})`, 'success');
+    }, [boxImageNames, imageDimensions, boxImageDefaultWidth, boxImageDefaultHeight, boxImageDefaultClass, activeClassCode, classes, projectType, showToast]);
+
     return {
         currentIndex,
         currentImageName,
@@ -389,6 +502,18 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         prelabelWidthAdjustClasses,
         setPrelabelWidthAdjustClasses,
         onImageLoaded,
-        markEmptyAndNext
+        markEmptyAndNext,
+        // Box Images exports
+        boxImageNames,
+        fetchBoxImages,
+        autoAddBoxImageEnabled,
+        setAutoAddBoxImageEnabled,
+        boxImageDefaultClass,
+        setBoxImageDefaultClass,
+        boxImageDefaultWidth,
+        setBoxImageDefaultWidth,
+        boxImageDefaultHeight,
+        setBoxImageDefaultHeight,
+        addRandomBoxImage
     };
 }

@@ -24,6 +24,17 @@ export default function AnnotatorSetupPage() {
 
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingPrelabels, setIsUploadingPrelabels] = useState(false);
+  const [boxImagesCount, setBoxImagesCount] = useState<number>(0);
+  const [isUploadingBoxImages, setIsUploadingBoxImages] = useState(false);
+
+  const loadBoxImagesData = useCallback(async (id: string) => {
+    try {
+      const res = await api.get(`/projects/${id}/box-images`);
+      setBoxImagesCount((res.data.image_names || []).length);
+    } catch {
+      setBoxImagesCount(0);
+    }
+  }, []);
 
   const loadWorkspaceData = useCallback(async (id: string) => {
     setIsWorkspaceLoading(true);
@@ -55,9 +66,10 @@ export default function AnnotatorSetupPage() {
       setSelectedProjectId(projectId);
       loadProject(projectId);
       loadWorkspaceData(projectId);
+      loadBoxImagesData(projectId);
     }
     loadAllProjects();
-  }, [projectId, loadWorkspaceData]);
+  }, [projectId, loadWorkspaceData, loadBoxImagesData]);
 
   const loadAllProjects = async () => {
     try {
@@ -157,6 +169,38 @@ export default function AnnotatorSetupPage() {
       showToast('Prelabels deleted', 'success');
     } catch {
       showToast('Failed to delete prelabels', 'error');
+    }
+  };
+
+  const handleUploadBoxImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    setIsUploadingBoxImages(true);
+    const filesArray = Array.from(e.target.files);
+    const formData = new FormData();
+    filesArray.forEach((file) => formData.append('files', file));
+
+    try {
+      await api.post(`/projects/${projectId}/box-images/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      showToast(`Successfully uploaded ${filesArray.length} box images`, 'success');
+      loadBoxImagesData(projectId!);
+    } catch {
+      showToast('Failed to upload box images', 'error');
+    } finally {
+      setIsUploadingBoxImages(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleClearBoxImages = async () => {
+    if (!confirm('Are you sure you want to clear all uploaded box images for this project?')) return;
+    try {
+      await api.delete(`/projects/${projectId}/box-images`);
+      showToast('Box images cleared', 'success');
+      loadBoxImagesData(projectId!);
+    } catch {
+      showToast('Failed to clear box images', 'error');
     }
   };
 
@@ -310,6 +354,32 @@ export default function AnnotatorSetupPage() {
           </label>
           {isUploading && <p className="text-center text-blue-600 mt-2 animate-pulse text-sm">Uploading and sorting...</p>}
         </div>
+
+        {/* Box Images */}
+        {(projectInfo.type === 'Yolo' || projectInfo.type === 'Yolo OBB') && (
+          <div className="bg-white border rounded shadow-md p-6">
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                <h3 className="text-base font-bold">Boxes Images</h3>
+                <p className="text-sm text-gray-500">Upload cut-out images to place onto canvas during annotation.</p>
+              </div>
+              <span className="bg-purple-100 text-purple-800 text-xs font-bold px-2.5 py-1 rounded-full">
+                {boxImagesCount} Loaded
+              </span>
+            </div>
+            <div className="flex flex-col gap-3 mt-4">
+              <label className="relative block">
+                <Button disabled={isUploadingBoxImages} className="w-full bg-purple-600 hover:bg-purple-700 text-white" asChild>
+                  <span>{isUploadingBoxImages ? 'Uploading...' : 'Upload Box Images (PNG/JPG)'}</span>
+                </Button>
+                <input type="file" multiple accept="image/*" className="hidden" onChange={handleUploadBoxImages} disabled={isUploadingBoxImages} />
+              </label>
+              {boxImagesCount > 0 && (
+                <Button variant="danger" className="w-full" onClick={handleClearBoxImages}>Clear All Box Images</Button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Prelabels */}
         {user?.role === 'admin' && (
