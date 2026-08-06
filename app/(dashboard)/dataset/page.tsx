@@ -99,6 +99,7 @@ export default function DatasetPage() {
   const [labeledCount, setLabeledCount] = useState(0);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [progressData, setProgressData] = useState<{current: number, total: number, startTime: number} | null>(null);
 
   const [totalSelected, setTotalSelected] = useState(0);
 
@@ -191,11 +192,29 @@ export default function DatasetPage() {
 
     setIsGenerating(true);
     setGeneratedFile(null);
+    const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    setProgressData({ current: 0, total: labeledCount, startTime: Date.now() });
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get(`/projects/${projectId}/dataset/progress/${taskId}`);
+        if (res.data) {
+          setProgressData(prev => ({
+            ...prev!,
+            current: res.data.current,
+            total: res.data.total,
+            startTime: res.data.start_time * 1000,
+          }));
+        }
+      } catch (e) {}
+    }, 1000);
+
     try {
       showToast('Generating dataset (this may take a while)...', 'success');
 
       const payload: any = {
-        session_id: "local_workspace",
+        session_id: 'local_workspace',
+        task_id: taskId,
         export_mode: isYolo ? config.export_mode : 'full',
         resize: config.resize.trim() || null,
         split_enabled: config.split_enabled,
@@ -237,7 +256,9 @@ export default function DatasetPage() {
       }
       showToast(typeof errorMsg === 'string' ? errorMsg : 'Failed to generate dataset', 'error');
     } finally {
+      clearInterval(interval);
       setIsGenerating(false);
+      setProgressData(null);
     }
   };
 
@@ -631,7 +652,9 @@ export default function DatasetPage() {
             )}
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-col items-end gap-3 w-full max-w-md">
+            <div className="flex gap-3">
+
             {generatedFile ? (
               <>
                 <button
@@ -653,10 +676,10 @@ export default function DatasetPage() {
               <button
                 onClick={handleGenerate}
                 disabled={isGenerating || labeledCount === 0 || (config.split_enabled && !splitValid)}
-                className={`flex items-center gap-2 px-6 py-3 rounded font-bold text-white text-base transition ${
+                className={`flex items-center justify-center gap-2 px-6 py-3 rounded font-bold text-white text-base transition ${
                   isGenerating || labeledCount === 0 || (config.split_enabled && !splitValid)
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700'
+                    ? 'bg-gray-400 cursor-not-allowed w-40'
+                    : 'bg-blue-600 hover:bg-blue-700 w-auto'
                 }`}
               >
                 {isGenerating ? (
@@ -671,6 +694,36 @@ export default function DatasetPage() {
                   <>📦 Generate Dataset</>
                 )}
               </button>
+            )}
+            </div>
+            
+            {isGenerating && progressData && (
+              <div className="w-full mt-2">
+                <div className="flex justify-between text-xs text-gray-600 mb-1">
+                  <span>Progress: {progressData.current} / {progressData.total}</span>
+                  <span>
+                    {(() => {
+                      const elapsedMs = Date.now() - progressData.startTime;
+                      const elapsedStr = new Date(elapsedMs).toISOString().substr(14, 5);
+                      let etaStr = '--:--';
+                      if (progressData.current > 0) {
+                        const msPerItem = elapsedMs / progressData.current;
+                        const remainingMs = msPerItem * (progressData.total - progressData.current);
+                        if (isFinite(remainingMs) && remainingMs >= 0) {
+                          etaStr = new Date(remainingMs).toISOString().substr(14, 5);
+                        }
+                      }
+                      return `Elapsed: ${elapsedStr} | ETA: ${etaStr}`;
+                    })()}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div 
+                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                    style={{ width: `${Math.min(100, Math.max(0, (progressData.current / progressData.total) * 100))}%` }}
+                  ></div>
+                </div>
+              </div>
             )}
           </div>
         </div>

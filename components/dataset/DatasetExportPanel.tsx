@@ -124,7 +124,6 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                 responseType: 'blob'
             });
 
-            
             // Trigger download
             const url = window.URL.createObjectURL(new Blob([res.data]));
             const link = document.createElement('a');
@@ -336,7 +335,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
             <div className="mt-6 flex justify-end space-x-3 pt-4 border-t border-gray-300">
                 <Button variant="ghost" onClick={onClose} disabled={isLoading}>Cancel</Button>
                 <Button onClick={handleGenerate} isLoading={isLoading} disabled={matchedFiles.length === 0 || isLoading}>
-                    3. Generate & Download
+                    3. Generate &amp; Download
                 </Button>
             </div>
         </Modal>
