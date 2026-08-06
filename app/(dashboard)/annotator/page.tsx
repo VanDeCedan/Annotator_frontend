@@ -18,6 +18,7 @@ export default function AnnotatorSetupPage() {
   const [stats, setStats] = useState({ labeled: 0 });
   const [annotatedImages, setAnnotatedImages] = useState<string[]>([]);
   const [unannotatedImages, setUnannotatedImages] = useState<string[]>([]);
+  const [skippedImages, setSkippedImages] = useState<string[]>([]);
   const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(false);
 
   const { user, showToast } = useAppStore();
@@ -50,14 +51,17 @@ export default function AnnotatorSetupPage() {
       // Fetch progress
       const progressRes = await api.get(`/projects/${id}/labels/progress/`);
       const labeledImages: string[] = progressRes.data.labeled_images || [];
+      const skipped_images: string[] = progressRes.data.skipped_images || [];
       
       setStats({ labeled: progressRes.data.labeled_count });
 
       const annotated = allImages.filter(img => labeledImages.includes(img));
-      const unannotated = allImages.filter(img => !labeledImages.includes(img));
+      const skipped = allImages.filter(img => skipped_images.includes(img));
+      const unannotated = allImages.filter(img => !labeledImages.includes(img) && !skipped_images.includes(img));
       
       setAnnotatedImages(annotated);
       setUnannotatedImages(unannotated);
+      setSkippedImages(skipped);
     } catch (err) {
       console.error('Failed to load workspace data', err);
     } finally {
@@ -99,7 +103,7 @@ export default function AnnotatorSetupPage() {
     }
   };
 
-  const handleStartAnnotation = (mode: 'annotated' | 'unannotated') => {
+  const handleStartAnnotation = (mode: 'annotated' | 'unannotated' | 'skipped') => {
     router.push(`/annotate/${projectId}/0?mode=${mode}`);
   };
 
@@ -301,7 +305,7 @@ export default function AnnotatorSetupPage() {
             <h3 className="text-lg font-bold">Local Workspace</h3>
             <p className="text-sm text-gray-500">Pick up where you left off or correct previous annotations.</p>
           </div>
-          <Button variant="danger" onClick={handleClearWorkspace} disabled={annotatedImages.length === 0 && unannotatedImages.length === 0}>
+          <Button variant="danger" onClick={handleClearWorkspace} disabled={annotatedImages.length === 0 && unannotatedImages.length === 0 && skippedImages.length === 0}>
             Clear Workspace
           </Button>
         </div>
@@ -314,7 +318,7 @@ export default function AnnotatorSetupPage() {
             </svg>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div 
               onClick={() => unannotatedImages.length > 0 && handleStartAnnotation('unannotated')}
               className={`border rounded-xl p-6 flex flex-col items-center text-center transition-all ${
@@ -354,11 +358,31 @@ export default function AnnotatorSetupPage() {
                 {annotatedImages.length}
               </span>
             </div>
+
+            <div 
+              onClick={() => skippedImages.length > 0 && handleStartAnnotation('skipped')}
+              className={`border rounded-xl p-6 flex flex-col items-center text-center transition-all ${
+                skippedImages.length > 0 
+                  ? 'cursor-pointer hover:shadow-md hover:border-gray-400 hover:-translate-y-1 bg-white' 
+                  : 'bg-gray-50 opacity-60 cursor-not-allowed'
+              }`}
+            >
+              <div className="w-14 h-14 bg-gray-100 text-gray-500 rounded-full flex items-center justify-center mb-3">
+                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h4 className="text-lg font-bold mb-1">Skipped</h4>
+              <p className="text-gray-500 text-sm mb-3">Review intentionally skipped images</p>
+              <span className="inline-block bg-gray-200 text-gray-700 text-xl font-bold px-4 py-1 rounded-full">
+                {skippedImages.length}
+              </span>
+            </div>
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Add More Images */}
         <div className="bg-white border rounded shadow-md p-6">
           <h3 className="text-base font-bold mb-1">Add Images to Workspace</h3>

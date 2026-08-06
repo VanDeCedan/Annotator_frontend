@@ -30,11 +30,14 @@ export default function AnnotatePage() {
 
         const progressRes = await api.get(`/projects/${projectId}/labels/progress/`);
         const labeledImages: string[] = progressRes.data.labeled_images || [];
+        const skippedImages: string[] = progressRes.data.skipped_images || [];
 
         if (mode === 'annotated') {
           setImageNames(allImages.filter(img => labeledImages.includes(img)));
         } else if (mode === 'unannotated') {
-          setImageNames(allImages.filter(img => !labeledImages.includes(img)));
+          setImageNames(allImages.filter(img => !labeledImages.includes(img) && !skippedImages.includes(img)));
+        } else if (mode === 'skipped') {
+          setImageNames(allImages.filter(img => skippedImages.includes(img)));
         } else {
           // Fallback to legacy URL passing
           const imageNamesStr = searchParams.get('images');
@@ -69,6 +72,7 @@ export default function AnnotatePage() {
     nextImage,
     prevImage,
     skipImage,
+    deleteImage,
     jumpToImage,
     canNext,
     canPrev,
@@ -665,6 +669,14 @@ export default function AnnotatePage() {
                 }}
               />
             </div>
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            <button
+              onClick={deleteImage}
+              className="px-2 py-1 rounded border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 transition-colors text-xs font-medium"
+              title="Delete Image from Dataset"
+            >
+              Delete
+            </button>
           </div>
         </div>
 

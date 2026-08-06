@@ -17,6 +17,7 @@ export default function SessionDashboardPage() {
 
   const [annotatedImages, setAnnotatedImages] = useState<string[]>([]);
   const [unannotatedImages, setUnannotatedImages] = useState<string[]>([]);
+  const [skippedImages, setSkippedImages] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -26,12 +27,15 @@ export default function SessionDashboardPage() {
       try {
         const res = await api.get(`/projects/${projectId}/labels/progress/`);
         const labeledImages: string[] = res.data.labeled_images || [];
+        const skipped_images: string[] = res.data.skipped_images || [];
         
         const annotated = imageNames.filter(img => labeledImages.includes(img));
-        const unannotated = imageNames.filter(img => !labeledImages.includes(img));
+        const skipped = imageNames.filter(img => skipped_images.includes(img));
+        const unannotated = imageNames.filter(img => !labeledImages.includes(img) && !skipped_images.includes(img));
         
         setAnnotatedImages(annotated);
         setUnannotatedImages(unannotated);
+        setSkippedImages(skipped);
       } catch (err) {
         console.error('Failed to fetch progress', err);
       } finally {
@@ -92,7 +96,7 @@ export default function SessionDashboardPage() {
             </svg>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Unannotated Card */}
             <div 
               onClick={() => handleStartAnnotation(unannotatedImages)}
@@ -135,6 +139,29 @@ export default function SessionDashboardPage() {
               <div className="mt-auto">
                 <span className="inline-block bg-green-100 text-green-800 text-2xl font-bold px-4 py-1 rounded-full">
                   {annotatedImages.length}
+                </span>
+              </div>
+            </div>
+
+            {/* Skipped Card */}
+            <div 
+              onClick={() => handleStartAnnotation(skippedImages)}
+              className={`bg-white border rounded-xl shadow-sm p-6 flex flex-col items-center text-center transition-all ${
+                skippedImages.length > 0 
+                  ? 'cursor-pointer hover:shadow-md hover:border-gray-400 hover:-translate-y-1' 
+                  : 'opacity-50 cursor-not-allowed'
+              }`}
+            >
+              <div className="w-16 h-16 bg-gray-100 text-gray-500 rounded-full flex items-center justify-center mb-4">
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold mb-1">Skipped Images</h3>
+              <p className="text-gray-500 text-sm mb-4">Images intentionally skipped</p>
+              <div className="mt-auto">
+                <span className="inline-block bg-gray-200 text-gray-700 text-2xl font-bold px-4 py-1 rounded-full">
+                  {skippedImages.length}
                 </span>
               </div>
             </div>

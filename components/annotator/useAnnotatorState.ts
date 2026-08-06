@@ -367,13 +367,53 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         }
     };
 
-    const skipImage = () => {
+    const skipImage = async () => {
+        if (!currentImageName) return;
+        try {
+            await api.post(`/projects/${projectId}/labels/skip`, {
+                img_name: currentImageName
+            });
+        } catch (err) {
+            console.error('Failed to mark image as skipped', err);
+        }
+        
         if (currentIndex < imageNames.length - 1) {
             setCurrentIndex(currentIndex + 1);
             setSelectedLabelIndex(null);
             setImageDimensions(null);
         } else {
              showToast('Reached end of images', 'success');
+        }
+    };
+
+    const deleteImage = async () => {
+        if (!currentImageName) return;
+        if (!confirm('Are you sure you want to permanently delete this image from the workspace and dataset?')) return;
+        
+        try {
+            await api.delete(`/projects/${projectId}/images/local_workspace/${currentImageName}`);
+            showToast('Image deleted', 'success');
+            
+            // Advance to next image but keep imageNames updated? 
+            // We shouldn't mutate imageNames directly as it's a prop, but for the UI to move on:
+            if (currentIndex < imageNames.length - 1) {
+                setCurrentIndex(currentIndex + 1);
+                setSelectedLabelIndex(null);
+                setImageDimensions(null);
+            } else if (currentIndex > 0) {
+                setCurrentIndex(currentIndex - 1);
+                setSelectedLabelIndex(null);
+                setImageDimensions(null);
+            } else {
+                showToast('No more images', 'success');
+            }
+            
+            // Ideally, the parent component should remove the image from the array, 
+            // but for now, advancing the index works to get off the deleted image.
+            // If the user goes back, it will 404, so we might want a callback.
+            // But we don't have a callback prop for delete in useAnnotatorState right now.
+        } catch (err) {
+            showToast('Failed to delete image', 'error');
         }
     };
 
@@ -484,6 +524,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         nextImage,
         prevImage,
         skipImage,
+        deleteImage,
         jumpToImage,
         canNext: currentIndex < imageNames.length - 1,
         canPrev: currentIndex > 0,
