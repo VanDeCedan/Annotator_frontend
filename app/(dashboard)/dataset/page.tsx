@@ -16,12 +16,17 @@ interface AugOptions {
   noise: boolean;
   blur: boolean;
   num_augs: number;
+  deskew_angles: number[];
+  ocr_distortion_intensity: number;
+  ocr_noise_intensity: number;
+  ocr_blur_intensity: number;
 }
 
 interface ExportConfig {
   export_mode: 'full' | 'crop';
   yolo_version: string;
   resize: string;
+  grayscale: boolean;
   split_enabled: boolean;
   train_pct: number;
   val_pct: number;
@@ -107,6 +112,7 @@ export default function DatasetPage() {
     export_mode: 'full',
     yolo_version: 'v8',
     resize: '',
+    grayscale: false,
     split_enabled: true,
     train_pct: 70,
     val_pct: 20,
@@ -120,6 +126,10 @@ export default function DatasetPage() {
       noise: false,
       blur: false,
       num_augs: 3,
+      deskew_angles: [],
+      ocr_distortion_intensity: 0,
+      ocr_noise_intensity: 0,
+      ocr_blur_intensity: 0,
     },
   });
 
@@ -217,6 +227,7 @@ export default function DatasetPage() {
         task_id: taskId,
         export_mode: isYolo ? config.export_mode : 'full',
         resize: config.resize.trim() || null,
+        grayscale: config.grayscale || false,
         split_enabled: config.split_enabled,
         train_pct: config.train_pct,
         val_pct: config.val_pct,
@@ -476,6 +487,18 @@ export default function DatasetPage() {
           </div>
           <p className="text-xs text-gray-500 mt-1">Select dimensions to scale images. Leave as &quot;No Resize&quot; to keep original size.</p>
         </div>
+        <div className="mb-2 mt-4">
+          <div className="flex items-center gap-3">
+            <ToggleSwitch
+              checked={config.grayscale || false}
+              onChange={(v) => setConfig((c) => ({ ...c, grayscale: v }))}
+            />
+            <div>
+              <span className="text-sm font-semibold text-black">Convertir en noir et blanc (Grayscale)</span>
+              <p className="text-xs text-gray-500">Convertit toutes les images exportées en noir et blanc</p>
+            </div>
+          </div>
+        </div>
       </SectionCard>
 
 
@@ -575,42 +598,121 @@ export default function DatasetPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <CheckboxRow
-                label="Horizontal Flip"
-                checked={config.augmentation.flip_h}
-                onChange={(v) => setAug('flip_h', v)}
-                description="Mirror image left-right"
-              />
-              <CheckboxRow
-                label="Vertical Flip"
-                checked={config.augmentation.flip_v}
-                onChange={(v) => setAug('flip_v', v)}
-                description="Mirror image top-bottom"
-              />
-              <CheckboxRow
-                label="Both Flips (180°)"
-                checked={config.augmentation.flip_hv}
-                onChange={(v) => setAug('flip_hv', v)}
-                description="Rotate 180 degrees"
-              />
-              <CheckboxRow
-                label="Camera Grain"
-                checked={config.augmentation.grain}
-                onChange={(v) => setAug('grain', v)}
-                description="Add subtle photographic grain"
-              />
-              <CheckboxRow
-                label="Salt & Pepper / Gaussian Noise"
-                checked={config.augmentation.noise}
-                onChange={(v) => setAug('noise', v)}
-                description="Add random pixel noise"
-              />
-              <CheckboxRow
-                label="Gaussian Blur"
-                checked={config.augmentation.blur}
-                onChange={(v) => setAug('blur', v)}
-                description="Slightly blur the image"
-              />
+              {projectInfo?.type === 'Deskewer' ? (
+                <>
+                  <p className="col-span-2 text-sm text-gray-700 font-semibold mb-2">Select predefined angles for data augmentation:</p>
+                  {Array.from({ length: 23 }, (_, i) => (i + 1) * 15).map(angle => (
+                    <CheckboxRow
+                      key={angle}
+                      label={`${angle}° Rotation`}
+                      checked={config.augmentation.deskew_angles.includes(angle)}
+                      onChange={(checked) => {
+                        const newAngles = checked
+                          ? [...config.augmentation.deskew_angles, angle]
+                          : config.augmentation.deskew_angles.filter(a => a !== angle);
+                        setAug('deskew_angles', newAngles);
+                        setAug('num_augs', newAngles.length);
+                      }}
+                    />
+                  ))}
+                </>
+              ) : projectInfo?.type === 'Ocr' ? (
+                <div className="flex flex-col gap-4 py-2">
+                  <div className="flex justify-between items-center bg-gray-50 p-3 rounded">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold text-black">Distorsion forte (Distortion)</span>
+                      <span className="text-xs text-gray-500">De 0 (désactivé) à 10</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="10" 
+                        step="0.5" 
+                        value={config.augmentation.ocr_distortion_intensity || 0} 
+                        onChange={e => setAug('ocr_distortion_intensity', parseFloat(e.target.value))} 
+                        className="w-24 accent-blue-600 cursor-pointer" 
+                      />
+                      <span className="text-sm font-bold text-gray-700 w-8 text-right">{config.augmentation.ocr_distortion_intensity || 0}</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center bg-gray-50 p-3 rounded">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold text-black">Bruit (Noise)</span>
+                      <span className="text-xs text-gray-500">De 0 (désactivé) à 10</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="10" 
+                        step="0.5" 
+                        value={config.augmentation.ocr_noise_intensity || 0} 
+                        onChange={e => setAug('ocr_noise_intensity', parseFloat(e.target.value))} 
+                        className="w-24 accent-blue-600 cursor-pointer" 
+                      />
+                      <span className="text-sm font-bold text-gray-700 w-8 text-right">{config.augmentation.ocr_noise_intensity || 0}</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center bg-gray-50 p-3 rounded">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold text-black">Flou (Blur)</span>
+                      <span className="text-xs text-gray-500">De 0 (désactivé) à 10</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="10" 
+                        step="0.5" 
+                        value={config.augmentation.ocr_blur_intensity || 0} 
+                        onChange={e => setAug('ocr_blur_intensity', parseFloat(e.target.value))} 
+                        className="w-24 accent-blue-600 cursor-pointer" 
+                      />
+                      <span className="text-sm font-bold text-gray-700 w-8 text-right">{config.augmentation.ocr_blur_intensity || 0}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <CheckboxRow
+                    label="Horizontal Flip"
+                    checked={config.augmentation.flip_h}
+                    onChange={(v) => setAug('flip_h', v)}
+                    description="Mirror image left-right"
+                  />
+                  <CheckboxRow
+                    label="Vertical Flip"
+                    checked={config.augmentation.flip_v}
+                    onChange={(v) => setAug('flip_v', v)}
+                    description="Mirror image top-bottom"
+                  />
+                  <CheckboxRow
+                    label="Both Flips (180°)"
+                    checked={config.augmentation.flip_hv}
+                    onChange={(v) => setAug('flip_hv', v)}
+                    description="Rotate 180 degrees"
+                  />
+                  <CheckboxRow
+                    label="Camera Grain"
+                    checked={config.augmentation.grain}
+                    onChange={(v) => setAug('grain', v)}
+                    description="Add subtle photographic grain"
+                  />
+                  <CheckboxRow
+                    label="Salt & Pepper / Gaussian Noise"
+                    checked={config.augmentation.noise}
+                    onChange={(v) => setAug('noise', v)}
+                    description="Add random pixel noise"
+                  />
+                  <CheckboxRow
+                    label="Gaussian Blur"
+                    checked={config.augmentation.blur}
+                    onChange={(v) => setAug('blur', v)}
+                    description="Slightly blur the image"
+                  />
+                </>
+              )}
             </div>
 
             <p className="mt-3 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">

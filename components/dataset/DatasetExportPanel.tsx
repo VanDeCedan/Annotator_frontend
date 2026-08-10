@@ -56,6 +56,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
     // Step 3: Settings
     const [exportMode, setExportMode] = useState<'full' | 'crop'>('full');
     const [resize, setResize] = useState('');
+    const [grayscale, setGrayscale] = useState(false);
     const [yoloVersion, setYoloVersion] = useState('v8');
     
     // Splits
@@ -72,6 +73,11 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
     const [grain, setGrain] = useState(false);
     const [noise, setNoise] = useState(false);
     const [blur, setBlur] = useState(false);
+    
+    // OCR Specific Augmentations
+    const [ocrDistortionIntensity, setOcrDistortionIntensity] = useState(0);
+    const [ocrNoiseIntensity, setOcrNoiseIntensity] = useState(0);
+    const [ocrBlurIntensity, setOcrBlurIntensity] = useState(0);
 
     const handleGenerate = async () => {
         if (matchedFiles.length === 0) {
@@ -104,6 +110,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                 session_id: sessionId,
                 export_mode: ['Yolo', 'Yolo OBB'].includes(projectType) ? exportMode : 'full',
                 resize: resize || null,
+                grayscale: grayscale,
                 split_enabled: splitEnabled,
                 train_pct: trainPct,
                 val_pct: valPct,
@@ -116,7 +123,10 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                     flip_hv: flipHV,
                     grain,
                     noise,
-                    blur
+                    blur,
+                    ocr_distortion_intensity: ocrDistortionIntensity,
+                    ocr_noise_intensity: ocrNoiseIntensity,
+                    ocr_blur_intensity: ocrBlurIntensity
                 }
             };
             
@@ -258,6 +268,17 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                                     placeholder="WxH"
                                 />
                             </div>
+                            <div className="col-span-2 mt-1">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={grayscale} 
+                                        onChange={e => setGrayscale(e.target.checked)}
+                                        className="rounded bg-white border-gray-300 text-blue-500 cursor-pointer"
+                                    />
+                                    <span className="text-sm font-semibold text-black">Convert to Black & White (Grayscale)</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
 
@@ -299,32 +320,91 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                             />
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-y-3">
-                            <label className="flex items-center space-x-2 text-sm text-gray-700">
-                                <input type="checkbox" checked={flipH} onChange={e => setFlipH(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
-                                <span>Horizontal Flip</span>
-                            </label>
-                            <label className="flex items-center space-x-2 text-sm text-gray-700">
-                                <input type="checkbox" checked={flipV} onChange={e => setFlipV(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
-                                <span>Vertical Flip</span>
-                            </label>
-                            <label className="flex items-center space-x-2 text-sm text-gray-700">
-                                <input type="checkbox" checked={flipHV} onChange={e => setFlipHV(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
-                                <span>Both Flips (180&deg;)</span>
-                            </label>
-                            <label className="flex items-center space-x-2 text-sm text-gray-700">
-                                <input type="checkbox" checked={grain} onChange={e => setGrain(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
-                                <span>Camera Grain</span>
-                            </label>
-                            <label className="flex items-center space-x-2 text-sm text-gray-700">
-                                <input type="checkbox" checked={noise} onChange={e => setNoise(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
-                                <span>Salt & Pepper / Gauss Noise</span>
-                            </label>
-                            <label className="flex items-center space-x-2 text-sm text-gray-700">
-                                <input type="checkbox" checked={blur} onChange={e => setBlur(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
-                                <span>Gaussian Blur</span>
-                            </label>
-                        </div>
+                        {projectType === 'Ocr' ? (
+                            <div className="flex flex-col gap-4">
+                                <div className="flex justify-between items-center bg-gray-50 p-2 rounded">
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-semibold text-black">Distorsion forte (Distortion)</span>
+                                        <span className="text-xs text-gray-500">De 0 (désactivé) à 10</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="range" 
+                                            min="0" 
+                                            max="10" 
+                                            step="0.5" 
+                                            value={ocrDistortionIntensity} 
+                                            onChange={e => setOcrDistortionIntensity(parseFloat(e.target.value))} 
+                                            className="w-24 accent-blue-600 cursor-pointer" 
+                                        />
+                                        <span className="text-sm font-bold text-gray-700 w-8 text-right">{ocrDistortionIntensity}</span>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center bg-gray-50 p-2 rounded">
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-semibold text-black">Bruit (Noise)</span>
+                                        <span className="text-xs text-gray-500">De 0 (désactivé) à 10</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="range" 
+                                            min="0" 
+                                            max="10" 
+                                            step="0.5" 
+                                            value={ocrNoiseIntensity} 
+                                            onChange={e => setOcrNoiseIntensity(parseFloat(e.target.value))} 
+                                            className="w-24 accent-blue-600 cursor-pointer" 
+                                        />
+                                        <span className="text-sm font-bold text-gray-700 w-8 text-right">{ocrNoiseIntensity}</span>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center bg-gray-50 p-2 rounded">
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-semibold text-black">Flou (Blur)</span>
+                                        <span className="text-xs text-gray-500">De 0 (désactivé) à 10</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="range" 
+                                            min="0" 
+                                            max="10" 
+                                            step="0.5" 
+                                            value={ocrBlurIntensity} 
+                                            onChange={e => setOcrBlurIntensity(parseFloat(e.target.value))} 
+                                            className="w-24 accent-blue-600 cursor-pointer" 
+                                        />
+                                        <span className="text-sm font-bold text-gray-700 w-8 text-right">{ocrBlurIntensity}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-y-3">
+                                <label className="flex items-center space-x-2 text-sm text-gray-700">
+                                    <input type="checkbox" checked={flipH} onChange={e => setFlipH(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
+                                    <span>Horizontal Flip</span>
+                                </label>
+                                <label className="flex items-center space-x-2 text-sm text-gray-700">
+                                    <input type="checkbox" checked={flipV} onChange={e => setFlipV(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
+                                    <span>Vertical Flip</span>
+                                </label>
+                                <label className="flex items-center space-x-2 text-sm text-gray-700">
+                                    <input type="checkbox" checked={flipHV} onChange={e => setFlipHV(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
+                                    <span>Both Flips (180&deg;)</span>
+                                </label>
+                                <label className="flex items-center space-x-2 text-sm text-gray-700">
+                                    <input type="checkbox" checked={grain} onChange={e => setGrain(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
+                                    <span>Camera Grain</span>
+                                </label>
+                                <label className="flex items-center space-x-2 text-sm text-gray-700">
+                                    <input type="checkbox" checked={noise} onChange={e => setNoise(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
+                                    <span>Salt & Pepper / Gauss Noise</span>
+                                </label>
+                                <label className="flex items-center space-x-2 text-sm text-gray-700">
+                                    <input type="checkbox" checked={blur} onChange={e => setBlur(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
+                                    <span>Gaussian Blur</span>
+                                </label>
+                            </div>
+                        )}
                         <p className="mt-3 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
                             ℹ Data augmentation is applied exclusively to the Training set. Validation and Test sets receive only original un-augmented images.
                         </p>

@@ -53,6 +53,9 @@ export default function AnnotatePage() {
     fetchImages();
   }, [projectId, mode, searchParams]);
 
+  const [prefixEnabled, setPrefixEnabled] = useState(false);
+  const [prefixValue, setPrefixValue] = useState('');
+
   const {
     currentIndex,
     currentImageName,
@@ -66,6 +69,10 @@ export default function AnnotatePage() {
     setSelectedLabelIndex,
     ocrValue,
     setOcrValue,
+    deskewAngle,
+    setDeskewAngle,
+    deskewCrop,
+    setDeskewCrop,
     prelabelStatus,
     isSaving,
     saveCurrent,
@@ -101,8 +108,9 @@ export default function AnnotatePage() {
     setBoxImageDefaultWidth,
     boxImageDefaultHeight,
     setBoxImageDefaultHeight,
-    addRandomBoxImage
-  } = useAnnotatorState(projectId, imageNames, initialIndex);
+    addRandomBoxImage,
+    ocrCharset
+  } = useAnnotatorState(projectId, imageNames, initialIndex, prefixEnabled, prefixValue);
 
   const [imageUrl, setImageUrl] = useState('');
   const [rotationStep, setRotationStep] = useState(90);
@@ -111,6 +119,47 @@ export default function AnnotatePage() {
   const [inheritFirstBoxAngle, setInheritFirstBoxAngle] = useState(false);
   const [zoomToAreaEnabled, setZoomToAreaEnabled] = useState(false);
   const [autoAdvanceClass, setAutoAdvanceClass] = useState(false);
+
+  // Crop state
+  const [isCropping, setIsCropping] = useState(false);
+  const [cropStart, setCropStart] = useState<{x: number, y: number} | null>(null);
+
+  const handleCropPointerDown = (e: React.PointerEvent<HTMLImageElement>) => {
+    if (projectType !== 'Deskewer') return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    setCropStart({ x, y });
+    setIsCropping(true);
+    setDeskewCrop({ x, y, w: 0, h: 0 });
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handleCropPointerMove = (e: React.PointerEvent<HTMLImageElement>) => {
+    if (!isCropping || !cropStart || projectType !== 'Deskewer') return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const currentX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const currentY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+
+    const x = Math.min(cropStart.x, currentX);
+    const y = Math.min(cropStart.y, currentY);
+    const w = Math.abs(currentX - cropStart.x);
+    const h = Math.abs(currentY - cropStart.y);
+
+    setDeskewCrop({ x, y, w, h });
+  };
+
+  const handleCropPointerUp = (e: React.PointerEvent<HTMLImageElement>) => {
+    if (!isCropping || projectType !== 'Deskewer') return;
+    setIsCropping(false);
+    setCropStart(null);
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    
+    // If the crop box is too small, just clear it
+    if (deskewCrop && (deskewCrop.w < 0.01 || deskewCrop.h < 0.01)) {
+        setDeskewCrop(null);
+    }
+  };
 
   // Advance to the next class in sorted order after each annotation
   const handleAnnotationAdded = () => {
@@ -170,11 +219,21 @@ export default function AnnotatePage() {
           if (canNext) nextImage();
         }
       }
+
+      if (projectType === 'Deskewer') {
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          setDeskewAngle((prev: number) => prev + rotationStep);
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          setDeskewAngle((prev: number) => prev - rotationStep);
+        }
+      }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canNext, canPrev, nextImage, prevImage]);
+  }, [canNext, canPrev, nextImage, prevImage, projectType, rotationStep, setDeskewAngle]);
 
   const handleBack = async () => {
     await saveCurrent();
@@ -560,27 +619,59 @@ export default function AnnotatePage() {
         )}
 
         {/* Canvas */}
-        <div className="flex-1 flex flex-col relative focus:outline-none" tabIndex={0}>
+        <div className="flex-1 flex flex-col focus:outline-none min-w-0" tabIndex={0}>
+          <div className="flex-1 flex flex-col relative min-h-0">
           {imageUrl ? (
-            <AnnotatorCanvas
-              projectId={projectId}
-              imageUrl={imageUrl}
-              projectType={projectType}
-              labels={labels}
-              onLabelsChange={setLabels}
-              activeClassCode={activeClassCode}
-              classes={classes}
-              selectedLabelIndex={selectedLabelIndex}
-              setSelectedLabelIndex={setSelectedLabelIndex}
-              rotationStep={rotationStep}
-              autoAdaptBox={autoAdaptBox}
-              doubleClickRotationEnabled={doubleClickRotationEnabled}
-              inheritFirstBoxAngle={inheritFirstBoxAngle}
-              zoomToAreaEnabled={zoomToAreaEnabled}
-              setZoomToAreaEnabled={setZoomToAreaEnabled}
-              onImageLoad={onImageLoaded}
-              onAnnotationAdded={handleAnnotationAdded}
-            />
+            projectType === 'Deskewer' ? (
+              <div className="flex-1 flex items-center justify-center overflow-hidden bg-[#2C2C2C] relative">
+                <div style={{ transform: `rotate(${deskewAngle}deg)`, transition: 'transform 0.1s ease-out', position: 'relative', display: 'inline-block' }}>
+                  <img 
+                    src={imageUrl} 
+                    alt="Deskewer" 
+                    draggable={false}
+                    className="object-contain"
+                    style={{ maxHeight: '90vh', maxWidth: '90vw' }}
+                    onPointerDown={handleCropPointerDown}
+                    onPointerMove={handleCropPointerMove}
+                    onPointerUp={handleCropPointerUp}
+                  />
+                  {deskewCrop && (
+                    <div style={{
+                      position: 'absolute',
+                      border: '2px solid #00ff00',
+                      backgroundColor: 'rgba(0, 255, 0, 0.2)',
+                      left: `${deskewCrop.x * 100}%`,
+                      top: `${deskewCrop.y * 100}%`,
+                      width: `${deskewCrop.w * 100}%`,
+                      height: `${deskewCrop.h * 100}%`,
+                      pointerEvents: 'none'
+                    }}>
+                      <div className="absolute top-0 left-0 bg-green-500 text-white text-[10px] px-1 font-mono">Crop Area</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <AnnotatorCanvas
+                projectId={projectId}
+                imageUrl={imageUrl}
+                projectType={projectType}
+                labels={labels}
+                onLabelsChange={setLabels}
+                activeClassCode={activeClassCode}
+                classes={classes}
+                selectedLabelIndex={selectedLabelIndex}
+                setSelectedLabelIndex={setSelectedLabelIndex}
+                rotationStep={rotationStep}
+                autoAdaptBox={autoAdaptBox}
+                doubleClickRotationEnabled={doubleClickRotationEnabled}
+                inheritFirstBoxAngle={inheritFirstBoxAngle}
+                zoomToAreaEnabled={zoomToAreaEnabled}
+                setZoomToAreaEnabled={setZoomToAreaEnabled}
+                onImageLoad={onImageLoaded}
+                onAnnotationAdded={handleAnnotationAdded}
+              />
+            )
           ) : (
             <div className="flex-1 flex items-center justify-center bg-[#EAEEF5]">
               <svg className="animate-spin h-10 w-10 text-blue-500" viewBox="0 0 24 24" fill="none">
@@ -678,17 +769,36 @@ export default function AnnotatePage() {
               Delete
             </button>
           </div>
+          </div>
+
+          {projectType === 'Ocr' && (
+            <div className="h-64 shrink-0 bg-white border-t border-gray-300 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] z-20">
+              <OCRPanel 
+                value={ocrValue} 
+                onChange={setOcrValue} 
+                onNext={canNext ? nextImage : undefined}
+                onPrev={canPrev ? prevImage : undefined}
+                prefixEnabled={prefixEnabled}
+                setPrefixEnabled={setPrefixEnabled}
+                prefixValue={prefixValue}
+                setPrefixValue={setPrefixValue}
+                ocrCharset={ocrCharset}
+              />
+            </div>
+          )}
         </div>
 
         {/* Resizer Handle */}
-        <div 
-          onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebar(true); }}
-          className={`w-1 cursor-col-resize shrink-0 transition-colors border-l border-gray-300 ${isResizingSidebar ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-300'}`}
-          style={{ zIndex: 50 }}
-        />
+        {projectType !== 'Ocr' && (
+          <div 
+            onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebar(true); }}
+            className={`w-1 cursor-col-resize shrink-0 transition-colors border-l border-gray-300 ${isResizingSidebar ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-300'}`}
+            style={{ zIndex: 50 }}
+          />
+        )}
 
         {/* Right panel wrapper (Classes / OCR Only) */}
-        <div className="flex flex-col h-full shrink-0 bg-white overflow-y-auto" style={{ width: sidebarWidth }}>
+        <div className={`flex flex-col h-full shrink-0 bg-white overflow-y-auto ${projectType === 'Ocr' ? 'hidden' : ''}`} style={{ width: sidebarWidth }}>
           {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'Classification') && (
             <ClassPanel
               classes={classes}
@@ -710,13 +820,94 @@ export default function AnnotatePage() {
             />
           )}
 
-          {projectType === 'Ocr' && (
-            <OCRPanel 
-              value={ocrValue} 
-              onChange={setOcrValue} 
-              onNext={canNext ? nextImage : undefined}
-              onPrev={canPrev ? prevImage : undefined}
-            />
+          {projectType === 'Deskewer' && (
+            <div className="p-4 flex flex-col h-full bg-white border-l border-gray-200">
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-4">
+                Deskewer Settings
+              </label>
+
+              <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-semibold text-gray-800">Rotation Angle</label>
+                  <span className="font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-sm">{deskewAngle}°</span>
+                </div>
+                
+                <input
+                  type="range"
+                  min="-180"
+                  max="180"
+                  value={deskewAngle}
+                  onChange={(e) => setDeskewAngle(Number(e.target.value))}
+                  className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer mb-4"
+                />
+
+                <div className="flex items-center gap-2 mb-4">
+                  <button onClick={() => setDeskewAngle(deskewAngle - rotationStep)} className="flex-1 bg-white border border-gray-300 rounded py-1.5 text-sm font-medium hover:bg-gray-100 transition shadow-sm">- {rotationStep}°</button>
+                  <button onClick={() => setDeskewAngle(deskewAngle + rotationStep)} className="flex-1 bg-white border border-gray-300 rounded py-1.5 text-sm font-medium hover:bg-gray-100 transition shadow-sm">+ {rotationStep}°</button>
+                </div>
+
+                <div className="flex items-center justify-between mt-2 pt-4 border-t border-gray-200">
+                  <label className="text-xs font-medium text-gray-600">Manual Input:</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={deskewAngle}
+                      onChange={(e) => setDeskewAngle(Number(e.target.value) || 0)}
+                      className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-center font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm"
+                    />
+                    <span className="text-xs text-gray-500">deg</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
+                  Rotation Step (Arrow Keys)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={rotationStep}
+                    onChange={(e) => setRotationStep(Number(e.target.value) || 0)}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-black focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm"
+                  />
+                  <span className="text-sm text-gray-500 font-medium">deg</span>
+                </div>
+                <p className="text-[11px] text-gray-500 mt-2 italic">Use Left / Right arrow keys to rotate quickly.</p>
+              </div>
+
+              <div className="mb-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <label className="text-sm font-semibold text-gray-800 block mb-2">Crop Area</label>
+                <p className="text-xs text-gray-500 mb-3">
+                  Click and drag on the image to draw a crop box. The crop will be applied after rotation.
+                </p>
+                {deskewCrop ? (
+                  <div className="flex flex-col gap-2">
+                     <span className="text-xs text-green-700 font-medium bg-green-100 px-2 py-1 rounded">
+                       Crop active
+                     </span>
+                     <button
+                       onClick={() => setDeskewCrop(null)}
+                       className="w-full bg-white border border-red-300 text-red-600 rounded py-1.5 text-xs font-medium hover:bg-red-50 transition shadow-sm"
+                     >
+                       Clear Crop
+                     </button>
+                  </div>
+                ) : (
+                  <span className="text-xs text-gray-400 italic">No crop drawn</span>
+                )}
+              </div>
+
+              <div className="mt-auto pt-4 border-t border-gray-200">
+                <button
+                  onClick={saveCurrent}
+                  disabled={isSaving}
+                  className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded shadow hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {isSaving ? 'Saving...' : 'Save Label'}
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>

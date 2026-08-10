@@ -2,18 +2,20 @@ import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 
-export function useAnnotatorState(projectId: number, imageNames: string[], initialIndex: number = 0) {
+export function useAnnotatorState(projectId: number, imageNames: string[], initialIndex: number = 0, prefixEnabled: boolean = false, prefixValue: string = '') {
     const showToast = useAppStore(s => s.showToast);
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
     const [classes, setClasses] = useState<any[]>([]);
     const [projectType, setProjectType] = useState('');
     const [activeClassCode, setActiveClassCode] = useState<number | null>(null);
     
-    // Labels state for current image
     const [labels, setLabels] = useState<any[]>([]);
     const [ocrValue, setOcrValue] = useState('');
+    const [deskewAngle, setDeskewAngle] = useState(0);
+    const [deskewCrop, setDeskewCrop] = useState<{x: number, y: number, w: number, h: number} | null>(null);
     const [prelabelStatus, setPrelabelStatus] = useState<string | null>(null);
     const [originalPrelabels, setOriginalPrelabels] = useState<any[]>([]);
+    const [ocrCharset, setOcrCharset] = useState<string | null>(null);
     
     // Pre-label rotation state
     const [prelabelRotationEnabled, setPrelabelRotationEnabled] = useState(false);
@@ -56,7 +58,10 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                     api.get(`/projects/${projectId}/classes`)
                 ]);
                 const proj = pRes.data.find((p: any) => p.id === projectId);
-                if (proj) setProjectType(proj.type);
+                if (proj) {
+                    setProjectType(proj.type);
+                    setOcrCharset(proj.ocr_charset || null);
+                }
                 setClasses(cRes.data);
                 if (cRes.data.length > 0) setActiveClassCode(cRes.data[0].code);
             } catch (err) {
@@ -137,12 +142,44 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                         setPrelabelStatus('Loaded from prelabel');
                     } else setPrelabelStatus(null);
                 } else if (data.type === 'Ocr') {
-                    if (data.label !== null) setOcrValue(data.label);
+                    let val = '';
+                    if (data.label !== null) {
+                        val = data.label;
+                        setPrelabelStatus(null);
+                    }
                     else if (data.prelabel !== null) {
-                        setOcrValue(data.prelabel);
+                        val = data.prelabel;
                         setPrelabelStatus('Loaded from prelabel');
                     } else {
-                        setOcrValue('');
+                        val = '';
+                        setPrelabelStatus(null);
+                    }
+                    if (data.label === null && prefixEnabled && prefixValue && !val.startsWith(prefixValue)) {
+                        val = prefixValue + val;
+                    }
+                    setOcrValue(val);
+                } else if (data.type === 'Deskewer') {
+                    if (data.label !== null) {
+                        setDeskewAngle(data.label);
+                        if (data.crop_box) {
+                            const [x, y, w, h] = data.crop_box.split(',').map(Number);
+                            setDeskewCrop({ x, y, w, h });
+                        } else {
+                            setDeskewCrop(null);
+                        }
+                    }
+                    else if (data.prelabel !== null) {
+                        setDeskewAngle(data.prelabel);
+                        if (data.crop_box) {
+                            const [x, y, w, h] = data.crop_box.split(',').map(Number);
+                            setDeskewCrop({ x, y, w, h });
+                        } else {
+                            setDeskewCrop(null);
+                        }
+                        setPrelabelStatus('Loaded from prelabel');
+                    } else {
+                        setDeskewAngle(0);
+                        setDeskewCrop(null);
                         setPrelabelStatus(null);
                     }
                 }
@@ -331,9 +368,25 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                     });
                 }
             } else if (projectType === 'Ocr') {
+                if (ocrCharset) {
+                    const invalidChars = Array.from(ocrValue).filter(char => !ocrCharset.includes(char));
+                    if (invalidChars.length > 0) {
+                        const uniqueInvalids = Array.from(new Set(invalidChars)).join(' ');
+                        showToast(`Invalid characters: ${uniqueInvalids}. Only characters in "${ocrCharset}" are allowed.`, 'error');
+                        setIsSaving(false);
+                        return;
+                    }
+                }
                 await api.post(`/projects/${projectId}/labels/ocr`, {
                     img_name: currentImageName,
                     value: ocrValue
+                });
+            } else if (projectType === 'Deskewer') {
+                const cropBoxStr = deskewCrop ? `${deskewCrop.x},${deskewCrop.y},${deskewCrop.w},${deskewCrop.h}` : null;
+                await api.post(`/projects/${projectId}/labels/deskewer`, {
+                    img_name: currentImageName,
+                    angle: deskewAngle,
+                    crop_box: cropBoxStr
                 });
             }
             showToast('Saved', 'success');
@@ -518,6 +571,10 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         setSelectedLabelIndex,
         ocrValue,
         setOcrValue,
+        deskewAngle,
+        setDeskewAngle,
+        deskewCrop,
+        setDeskewCrop,
         prelabelStatus,
         isSaving,
         saveCurrent,
@@ -555,6 +612,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         setBoxImageDefaultWidth,
         boxImageDefaultHeight,
         setBoxImageDefaultHeight,
-        addRandomBoxImage
+        addRandomBoxImage,
+        ocrCharset
     };
 }
