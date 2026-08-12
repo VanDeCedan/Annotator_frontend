@@ -125,6 +125,7 @@ export function AnnotatorCanvas({
     // Viewport dragging
     const [isPanning, setIsPanning] = useState(false);
     const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+    const [panModeEnabled, setPanModeEnabled] = useState(false);
     
     // Interaction mode
     type Mode = 'idle' | 'drawing_yolo' | 'drawing_obb' | 'drawing_zoom' | 'dragging_box' | 'resizing_yolo' | 'resizing_obb' | 'rotating_obb';
@@ -457,7 +458,7 @@ export function AnnotatorCanvas({
     }, [scale, offset, image]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
-        if (e.button === 1 || e.button === 2 || e.shiftKey) { 
+        if (e.button === 1 || e.button === 2 || e.shiftKey || panModeEnabled) { 
             setIsPanning(true);
             setPanStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
             return;
@@ -887,7 +888,7 @@ export function AnnotatorCanvas({
     };
 
     return (
-        <div ref={containerRef} className={`flex-1 bg-[#EAEEF5] overflow-hidden relative ${zoomToAreaEnabled ? 'cursor-zoom-in' : 'cursor-crosshair'}`}>
+        <div ref={containerRef} className={`flex-1 bg-[#EAEEF5] overflow-hidden relative ${panModeEnabled ? 'cursor-grab active:cursor-grabbing' : (zoomToAreaEnabled ? 'cursor-zoom-in' : 'cursor-crosshair')}`}>
             <canvas
                 ref={canvasRef}
                 onMouseDown={handleMouseDown}
@@ -902,7 +903,10 @@ export function AnnotatorCanvas({
             {/* Top Floating Toolbar for Quick Controls */}
             <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-white/90 backdrop-blur border border-gray-300 p-1.5 rounded-lg shadow-md">
                 <button
-                    onClick={() => setZoomToAreaEnabled && setZoomToAreaEnabled(!zoomToAreaEnabled)}
+                    onClick={() => {
+                        if (setZoomToAreaEnabled) setZoomToAreaEnabled(!zoomToAreaEnabled);
+                        if (!zoomToAreaEnabled) setPanModeEnabled(false);
+                    }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
                         zoomToAreaEnabled
                             ? 'bg-blue-600 text-white shadow-inner ring-2 ring-blue-400'
@@ -929,19 +933,73 @@ export function AnnotatorCanvas({
                     </svg>
                     Fit Image
                 </button>
+
+                <button
+                    onClick={() => {
+                        setPanModeEnabled(!panModeEnabled);
+                        if (!panModeEnabled && setZoomToAreaEnabled) setZoomToAreaEnabled(false);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                        panModeEnabled
+                            ? 'bg-blue-600 text-white shadow-inner ring-2 ring-blue-400'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
+                    }`}
+                    title="Toggle Pan mode (Drag to move image)"
+                >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" />
+                    </svg>
+                    <span>Pan Tool</span>
+                    {panModeEnabled && (
+                        <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-white/30 text-white rounded font-bold uppercase">ON</span>
+                    )}
+                </button>
             </div>
+
+            {/* Horizontal Scrollbar */}
+            {image && (
+                <div className="absolute bottom-0 left-0 right-4 h-4 bg-gray-100/80 border-t border-gray-300 z-20 flex items-center px-1 opacity-70 hover:opacity-100 transition-opacity">
+                    <input 
+                        type="range"
+                        className="w-full h-2 accent-blue-600 cursor-pointer"
+                        min={-2000}
+                        max={image.width * scale + 2000}
+                        value={-offset.x}
+                        onChange={(e) => setOffset(prev => ({ ...prev, x: -Number(e.target.value) }))}
+                        title="Pan horizontally"
+                    />
+                </div>
+            )}
+
+            {/* Vertical Scrollbar */}
+            {image && (
+                <div className="absolute top-0 right-0 bottom-4 w-4 bg-gray-100/80 border-l border-gray-300 z-20 flex justify-center py-1 opacity-70 hover:opacity-100 transition-opacity">
+                    <input 
+                        type="range"
+                        className="h-full w-2 accent-blue-600 cursor-pointer"
+                        style={{ WebkitAppearance: 'slider-vertical' } as React.CSSProperties}
+                        min={-2000}
+                        max={image.height * scale + 2000}
+                        value={-offset.y}
+                        onChange={(e) => setOffset(prev => ({ ...prev, y: -Number(e.target.value) }))}
+                        title="Pan vertically"
+                    />
+                </div>
+            )}
             
             <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur text-white text-xs px-3 py-2 rounded-lg pointer-events-none shadow z-10">
                 <p className="font-semibold text-blue-300">Zoom: {Math.round(scale * 100)}%</p>
                 {zoomToAreaEnabled ? (
                     <p className="text-yellow-300 font-semibold animate-pulse">🔍 Drag rectangle on image to zoom</p>
+                ) : panModeEnabled ? (
+                    <p className="text-yellow-300 font-semibold animate-pulse">✋ Drag on image to pan</p>
                 ) : (
                     <p>Select: Click Box | Draw: Drag Box | <span className="text-yellow-300 font-semibold">Double-Click: Zoom Area</span></p>
                 )}
                 {projectType === 'Yolo OBB' && selectedLabelIndex !== null && (
                     <p className="text-yellow-300 font-bold">Drag top handle to rotate</p>
                 )}
-                <p>Delete: Select & Del / Right Click | Pan: Middle Click / Shift</p>
+                <p>Delete: Select & Del / Right Click | Pan: Middle Click / Shift / Hand Tool</p>
             </div>
         </div>
     );
