@@ -109,7 +109,17 @@ export default function AnnotatePage() {
     boxImageDefaultHeight,
     setBoxImageDefaultHeight,
     addRandomBoxImage,
-    ocrCharset
+    ocrCharset,
+    runDbnetDetection,
+    runParseqOcr,
+    runLivePrediction,
+    isAiLoading,
+    dbnetModelPath,
+    ocrEnableClass,
+    autoPredictEnabled,
+    setAutoPredictEnabled,
+    ocrConf,
+    setOcrConf,
   } = useAnnotatorState(projectId, imageNames, initialIndex, prefixEnabled, prefixValue);
 
   const [imageUrl, setImageUrl] = useState('');
@@ -119,6 +129,9 @@ export default function AnnotatePage() {
   const [inheritFirstBoxAngle, setInheritFirstBoxAngle] = useState(false);
   const [zoomToAreaEnabled, setZoomToAreaEnabled] = useState(false);
   const [autoAdvanceClass, setAutoAdvanceClass] = useState(false);
+  const [dbnetThresh, setDbnetThresh] = useState(0.7);
+  const [parseqMinConf, setParseqMinConf] = useState(0.5);
+  const [aiThresh, setAiThresh] = useState(0.25);
 
   // Crop state
   const [isCropping, setIsCropping] = useState(false);
@@ -175,6 +188,8 @@ export default function AnnotatePage() {
   // Sidebar resizer state
   const [sidebarWidth, setSidebarWidth] = useState(288); // Default 288px (Tailwind w-72)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
 
   useEffect(() => {
     if (!isResizingSidebar) return;
@@ -220,6 +235,16 @@ export default function AnnotatePage() {
         }
       }
 
+      if (e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        deleteImage();
+      }
+
+      if (e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        skipImage();
+      }
+
       if (projectType === 'Deskewer') {
         if (e.key === 'ArrowRight') {
           e.preventDefault();
@@ -233,7 +258,7 @@ export default function AnnotatePage() {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canNext, canPrev, nextImage, prevImage, projectType, rotationStep, setDeskewAngle]);
+  }, [canNext, canPrev, nextImage, prevImage, deleteImage, skipImage, projectType, rotationStep, setDeskewAngle]);
 
   const handleBack = async () => {
     await saveCurrent();
@@ -287,9 +312,22 @@ export default function AnnotatePage() {
       <div className="flex flex-1 overflow-hidden" style={{ cursor: isResizingSidebar ? 'col-resize' : 'default' }}>
 
         {/* Left Sidebar: Annotation Tools */}
-        {(projectType === 'Yolo' || projectType === 'Yolo OBB') && (
-          <div className="w-80 shrink-0 bg-white border-r border-gray-200 overflow-y-auto p-4 flex flex-col h-full z-10 shadow-xs">
-            <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
+        {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'KIE') && (
+          <div className={`relative shrink-0 bg-white border-r border-gray-200 flex flex-col h-full z-10 shadow-xs transition-all duration-200 ${isLeftSidebarOpen ? 'w-80' : 'w-0'}`}>
+            <button
+              onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
+              className="absolute -right-4 top-1/2 -translate-y-1/2 w-4 h-16 bg-white border border-gray-300 rounded-r-md flex items-center justify-center hover:bg-gray-50 z-50 text-gray-500 shadow"
+              style={{ right: '-16px' }}
+              title="Toggle Left Sidebar"
+            >
+              {isLeftSidebarOpen ? (
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+              ) : (
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              )}
+            </button>
+            <div className={`flex flex-col h-full w-80 overflow-y-auto p-4 ${!isLeftSidebarOpen && 'hidden'}`}>
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
               Annotation Tools
             </label>
 
@@ -311,6 +349,89 @@ export default function AnnotatePage() {
               </div>
             </label>
 
+            {/* AI Tools Section for KIE (only shown if dbnetModelPath is provided) */}
+            {projectType === 'KIE' && dbnetModelPath && (
+              <>
+                <hr className="my-3 border-gray-200" />
+                <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl mb-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-xs font-bold text-indigo-900 uppercase tracking-wider block">
+                      AI Assist
+                    </label>
+                  </div>
+                  
+                  <div className="mb-3 space-y-2">
+                    <div className="flex flex-col">
+                      <div className="flex justify-between">
+                        <label className="text-[10px] font-semibold text-indigo-800">DBNet Conf: {dbnetThresh}</label>
+                      </div>
+                      <input type="range" min="0.1" max="1.0" step="0.05" value={dbnetThresh} onChange={(e) => setDbnetThresh(parseFloat(e.target.value))} className="w-full h-1.5 bg-indigo-200 rounded-lg appearance-none cursor-pointer" />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => runDbnetDetection(dbnetThresh)}
+                    disabled={isAiLoading}
+                    className="w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 border bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-sm cursor-pointer disabled:opacity-50"
+                  >
+                    🎯 DBNet Auto-Detect
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* AI Assist for YOLO / YOLO OBB */}
+            {(projectType === 'Yolo' || projectType === 'Yolo OBB') && dbnetModelPath && (
+              <>
+                <hr className="my-3 border-gray-200" />
+                <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl mb-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-xs font-bold text-indigo-900 uppercase tracking-wider block">
+                      AI Assist
+                    </label>
+                    <label className="flex items-center gap-1.5 text-[10px] text-indigo-700 font-bold cursor-pointer uppercase tracking-wider">
+                      <input
+                        type="checkbox"
+                        checked={autoPredictEnabled}
+                        onChange={(e) => setAutoPredictEnabled(e.target.checked)}
+                        className="w-3 h-3 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      Auto
+                    </label>
+                  </div>
+                  
+                  <div className="mb-3 space-y-2">
+                    <div className="flex flex-col">
+                      <div className="flex justify-between">
+                        <label className="text-[10px] font-semibold text-indigo-800">Min Conf: {ocrConf}</label>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.05" 
+                        max="1.0" 
+                        step="0.05" 
+                        value={ocrConf} 
+                        onChange={(e) => setOcrConf(parseFloat(e.target.value))} 
+                        className="w-full h-1.5 bg-indigo-200 rounded-lg appearance-none cursor-pointer" 
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => runLivePrediction(ocrConf)}
+                    disabled={isAiLoading}
+                    className="w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 border bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-sm cursor-pointer disabled:opacity-50"
+                  >
+                    {isAiLoading ? 'Predicting...' : '🎯 AI Predict'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Boxes Images Tools Section */}
+            {projectType !== 'KIE' && (
+              <>
             {/* Boxes Images Tools Section */}
             <hr className="my-3 border-gray-200" />
             <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-xl mb-3">
@@ -394,6 +515,9 @@ export default function AnnotatePage() {
                 </div>
               </div>
             </div>
+              </>
+            )}
+
 
             {projectType === 'Yolo OBB' && (
               <>
@@ -615,6 +739,7 @@ export default function AnnotatePage() {
                 </div>
               )}
             </div>
+            </div>
           </div>
         )}
 
@@ -695,7 +820,7 @@ export default function AnnotatePage() {
             >
               Clear All
             </button>
-            {(projectType === 'Yolo' || projectType === 'Yolo OBB') && (
+            {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'KIE') && (
               <button
                 onClick={() => {
                   if(window.confirm('Mark this image as background (empty) and go to next?')) {
@@ -783,13 +908,25 @@ export default function AnnotatePage() {
                 prefixValue={prefixValue}
                 setPrefixValue={setPrefixValue}
                 ocrCharset={ocrCharset}
+                hasModel={!!dbnetModelPath}
+                isAiLoading={isAiLoading}
+                onPredict={async (confThresh) => {
+                  setAiThresh(confThresh);
+                  await runLivePrediction(confThresh);
+                }}
+                autoPredictEnabled={autoPredictEnabled}
+                setAutoPredictEnabled={setAutoPredictEnabled}
+                ocrConf={ocrConf}
+                setOcrConf={setOcrConf}
               />
             </div>
           )}
+          
+          {/* KIE project no longer has OCR text panel on screen */}
         </div>
 
         {/* Resizer Handle */}
-        {projectType !== 'Ocr' && (
+        {projectType !== 'Ocr' && isRightSidebarOpen && (
           <div 
             onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebar(true); }}
             className={`w-1 cursor-col-resize shrink-0 transition-colors border-l border-gray-300 ${isResizingSidebar ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-300'}`}
@@ -798,8 +935,21 @@ export default function AnnotatePage() {
         )}
 
         {/* Right panel wrapper (Classes / OCR Only) */}
-        <div className={`flex flex-col h-full shrink-0 bg-white overflow-y-auto ${projectType === 'Ocr' ? 'hidden' : ''}`} style={{ width: sidebarWidth }}>
-          {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'Classification') && (
+        <div className={`relative flex flex-col h-full shrink-0 bg-white transition-all duration-200 ${(projectType === 'Ocr' && !ocrEnableClass) ? 'hidden' : ''}`} style={{ width: isRightSidebarOpen ? sidebarWidth : 0 }}>
+          <button
+            onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+            className="absolute -left-4 top-1/2 -translate-y-1/2 w-4 h-16 bg-white border border-gray-300 rounded-l-md flex items-center justify-center hover:bg-gray-50 z-50 text-gray-500 shadow"
+            style={{ left: '-16px' }}
+            title="Toggle Right Sidebar"
+          >
+            {isRightSidebarOpen ? (
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            ) : (
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            )}
+          </button>
+          <div className={`flex flex-col h-full w-full overflow-y-auto ${!isRightSidebarOpen && 'hidden'}`}>
+          {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'Classification' || projectType === 'KIE' || (projectType === 'Ocr' && ocrEnableClass)) && (
             <ClassPanel
               classes={classes}
               activeClassCode={activeClassCode}
@@ -909,8 +1059,10 @@ export default function AnnotatePage() {
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>
   );
 }
+

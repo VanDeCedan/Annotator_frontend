@@ -23,7 +23,7 @@ export function ClassPanel({ classes, activeClassCode, onSelectClass, projectTyp
       <div className="px-4 py-3 border-b border-gray-200 bg-gray-100">
         <h2 className="text-xs font-bold text-black uppercase tracking-wider">Classes</h2>
         <p className="text-xs text-gray-500 mt-0.5">
-          {projectType === 'Classification' 
+          {(projectType === 'Classification' || projectType === 'Ocr') 
             ? 'Select to assign class' 
             : selectedLabelIndex !== null && selectedLabelIndex !== undefined 
               ? 'Change class of selected box' 
@@ -32,7 +32,7 @@ export function ClassPanel({ classes, activeClassCode, onSelectClass, projectTyp
       </div>
 
       {/* Class list */}
-      <div className="overflow-y-auto max-h-64 p-2 space-y-1">
+      <div className="overflow-y-auto flex-1 p-2 space-y-1">
         {classes.length === 0 ? (
           <div className="text-center text-sm text-gray-500 py-8">No classes defined</div>
         ) : (
@@ -66,3 +66,4 @@ export function ClassPanel({ classes, activeClassCode, onSelectClass, projectTyp
     </div>
   );
 }
+

@@ -66,6 +66,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
     const [testPct, setTestPct] = useState(10);
     
     // Augmentations
+    const [augmentationEnabled, setAugmentationEnabled] = useState(false);
     const [numAugs, setNumAugs] = useState(3);
     const [flipH, setFlipH] = useState(false);
     const [flipV, setFlipV] = useState(false);
@@ -73,6 +74,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
     const [grain, setGrain] = useState(false);
     const [noise, setNoise] = useState(false);
     const [blur, setBlur] = useState(false);
+    const [includeAugInVal, setIncludeAugInVal] = useState(false);
     
     // OCR Specific Augmentations
     const [ocrDistortionIntensity, setOcrDistortionIntensity] = useState(0);
@@ -116,7 +118,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                 val_pct: valPct,
                 test_pct: testPct,
                 yolo_version: yoloVersion,
-                augmentation: {
+                augmentation: augmentationEnabled ? {
                     num_augs: numAugs,
                     flip_h: flipH,
                     flip_v: flipV,
@@ -126,8 +128,9 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                     blur,
                     ocr_distortion_intensity: ocrDistortionIntensity,
                     ocr_noise_intensity: ocrNoiseIntensity,
-                    ocr_blur_intensity: ocrBlurIntensity
-                }
+                    ocr_blur_intensity: ocrBlurIntensity,
+                    include_aug_in_val: includeAugInVal
+                } : null
             };
             
             const res = await api.post(`/projects/${projectId}/dataset/generate`, payload, {
@@ -308,106 +311,155 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                     </div>
 
                     {/* Augmentations */}
-                    <div className="border-t border-gray-300 pt-4">
-                        <h4 className="text-sm font-bold text-black mb-3">Augmentations</h4>
-                        <div className="mb-4">
-                            <Input 
-                                label="Augmented Images per Original" 
-                                type="number" 
-                                min="1" max="10"
-                                value={numAugs} 
-                                onChange={e => setNumAugs(Number(e.target.value))} 
-                            />
-                        </div>
-                        
-                        {projectType === 'Ocr' ? (
-                            <div className="flex flex-col gap-4">
-                                <div className="flex justify-between items-center bg-gray-50 p-2 rounded">
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-semibold text-black">Distorsion forte (Distortion)</span>
-                                        <span className="text-xs text-gray-500">De 0 (désactivé) à 10</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <input 
-                                            type="range" 
-                                            min="0" 
-                                            max="10" 
-                                            step="0.5" 
-                                            value={ocrDistortionIntensity} 
-                                            onChange={e => setOcrDistortionIntensity(parseFloat(e.target.value))} 
-                                            className="w-24 accent-blue-600 cursor-pointer" 
-                                        />
-                                        <span className="text-sm font-bold text-gray-700 w-8 text-right">{ocrDistortionIntensity}</span>
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center bg-gray-50 p-2 rounded">
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-semibold text-black">Bruit (Noise)</span>
-                                        <span className="text-xs text-gray-500">De 0 (désactivé) à 10</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <input 
-                                            type="range" 
-                                            min="0" 
-                                            max="10" 
-                                            step="0.5" 
-                                            value={ocrNoiseIntensity} 
-                                            onChange={e => setOcrNoiseIntensity(parseFloat(e.target.value))} 
-                                            className="w-24 accent-blue-600 cursor-pointer" 
-                                        />
-                                        <span className="text-sm font-bold text-gray-700 w-8 text-right">{ocrNoiseIntensity}</span>
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center bg-gray-50 p-2 rounded">
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-semibold text-black">Flou (Blur)</span>
-                                        <span className="text-xs text-gray-500">De 0 (désactivé) à 10</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <input 
-                                            type="range" 
-                                            min="0" 
-                                            max="10" 
-                                            step="0.5" 
-                                            value={ocrBlurIntensity} 
-                                            onChange={e => setOcrBlurIntensity(parseFloat(e.target.value))} 
-                                            className="w-24 accent-blue-600 cursor-pointer" 
-                                        />
-                                        <span className="text-sm font-bold text-gray-700 w-8 text-right">{ocrBlurIntensity}</span>
-                                    </div>
-                                </div>
+                    {/* Augmentations */}
+                    <div className="border-t border-gray-200 pt-6 mt-6">
+                        <div className="flex items-center gap-2 mb-6 border-b border-gray-100 pb-4">
+                            <div className="bg-blue-500 text-white p-1 rounded">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                             </div>
-                        ) : (
-                            <div className="grid grid-cols-2 gap-y-3">
-                                <label className="flex items-center space-x-2 text-sm text-gray-700">
-                                    <input type="checkbox" checked={flipH} onChange={e => setFlipH(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
-                                    <span>Horizontal Flip</span>
-                                </label>
-                                <label className="flex items-center space-x-2 text-sm text-gray-700">
-                                    <input type="checkbox" checked={flipV} onChange={e => setFlipV(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
-                                    <span>Vertical Flip</span>
-                                </label>
-                                <label className="flex items-center space-x-2 text-sm text-gray-700">
-                                    <input type="checkbox" checked={flipHV} onChange={e => setFlipHV(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
-                                    <span>Both Flips (180&deg;)</span>
-                                </label>
-                                <label className="flex items-center space-x-2 text-sm text-gray-700">
-                                    <input type="checkbox" checked={grain} onChange={e => setGrain(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
-                                    <span>Camera Grain</span>
-                                </label>
-                                <label className="flex items-center space-x-2 text-sm text-gray-700">
-                                    <input type="checkbox" checked={noise} onChange={e => setNoise(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
-                                    <span>Salt & Pepper / Gauss Noise</span>
-                                </label>
-                                <label className="flex items-center space-x-2 text-sm text-gray-700">
-                                    <input type="checkbox" checked={blur} onChange={e => setBlur(e.target.checked)} className="rounded bg-white border-gray-300 text-blue-500" />
-                                    <span>Gaussian Blur</span>
-                                </label>
+                            <h3 className="text-lg font-bold text-gray-900">Data Augmentation</h3>
+                        </div>
+
+                        <label className="flex items-center gap-4 cursor-pointer mb-6">
+                            <div className={`relative w-14 h-7 flex items-center rounded-full p-1 transition-colors duration-200 ease-in-out ${augmentationEnabled ? 'bg-blue-500' : 'bg-gray-300'}`}>
+                                <div className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${augmentationEnabled ? 'translate-x-7' : ''}`}></div>
+                            </div>
+                            <input 
+                                type="checkbox" 
+                                className="hidden" 
+                                checked={augmentationEnabled} 
+                                onChange={(e) => setAugmentationEnabled(e.target.checked)} 
+                            />
+                            <span className="text-base font-medium text-gray-800">Augmentation enabled</span>
+                        </label>
+
+                        {augmentationEnabled && (
+                            <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-900 mb-2">Augmented copies per original image</label>
+                                    <input 
+                                        type="number" 
+                                        min="1" max="10"
+                                        value={numAugs} 
+                                        onChange={e => setNumAugs(Number(e.target.value))}
+                                        className="w-32 border border-gray-300 rounded px-3 py-2 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                    <p className="text-sm text-gray-500 mt-2">Each original image will produce this many additional augmented variants.</p>
+                                </div>
+                                
+                                {projectType === 'Ocr' ? (
+                                    <div className="flex flex-col gap-4">
+                                        <div className="flex justify-between items-center bg-gray-50 p-3 rounded border border-gray-200">
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-semibold text-gray-900">Distorsion forte (Distortion)</span>
+                                                <span className="text-xs text-gray-500">De 0 (désactivé) à 10</span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <input 
+                                                    type="range" 
+                                                    min="0" max="10" step="0.5" 
+                                                    value={ocrDistortionIntensity} 
+                                                    onChange={e => setOcrDistortionIntensity(parseFloat(e.target.value))} 
+                                                    className="w-32 accent-blue-600 cursor-pointer" 
+                                                />
+                                                <span className="text-sm font-bold text-gray-700 w-8 text-right">{ocrDistortionIntensity}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between items-center bg-gray-50 p-3 rounded border border-gray-200">
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-semibold text-gray-900">Bruit (Noise)</span>
+                                                <span className="text-xs text-gray-500">De 0 (désactivé) à 10</span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <input 
+                                                    type="range" 
+                                                    min="0" max="10" step="0.5" 
+                                                    value={ocrNoiseIntensity} 
+                                                    onChange={e => setOcrNoiseIntensity(parseFloat(e.target.value))} 
+                                                    className="w-32 accent-blue-600 cursor-pointer" 
+                                                />
+                                                <span className="text-sm font-bold text-gray-700 w-8 text-right">{ocrNoiseIntensity}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between items-center bg-gray-50 p-3 rounded border border-gray-200">
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-semibold text-gray-900">Flou (Blur)</span>
+                                                <span className="text-xs text-gray-500">De 0 (désactivé) à 10</span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <input 
+                                                    type="range" 
+                                                    min="0" max="10" step="0.5" 
+                                                    value={ocrBlurIntensity} 
+                                                    onChange={e => setOcrBlurIntensity(parseFloat(e.target.value))} 
+                                                    className="w-32 accent-blue-600 cursor-pointer" 
+                                                />
+                                                <span className="text-sm font-bold text-gray-700 w-8 text-right">{ocrBlurIntensity}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+                                        <label className="flex items-start gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={flipH} onChange={e => setFlipH(e.target.checked)} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 bg-white" />
+                                            <div className="-mt-0.5">
+                                                <div className="text-sm font-semibold text-gray-900">Horizontal Flip</div>
+                                                <div className="text-sm text-gray-500 mt-0.5">Mirror image left-right</div>
+                                            </div>
+                                        </label>
+                                        <label className="flex items-start gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={flipV} onChange={e => setFlipV(e.target.checked)} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 bg-white" />
+                                            <div className="-mt-0.5">
+                                                <div className="text-sm font-semibold text-gray-900">Vertical Flip</div>
+                                                <div className="text-sm text-gray-500 mt-0.5">Mirror image top-bottom</div>
+                                            </div>
+                                        </label>
+                                        <label className="flex items-start gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={flipHV} onChange={e => setFlipHV(e.target.checked)} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 bg-white" />
+                                            <div className="-mt-0.5">
+                                                <div className="text-sm font-semibold text-gray-900">Both Flips (180&deg;)</div>
+                                                <div className="text-sm text-gray-500 mt-0.5">Rotate 180 degrees</div>
+                                            </div>
+                                        </label>
+                                        <label className="flex items-start gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={grain} onChange={e => setGrain(e.target.checked)} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 bg-white" />
+                                            <div className="-mt-0.5">
+                                                <div className="text-sm font-semibold text-gray-900">Camera Grain</div>
+                                                <div className="text-sm text-gray-500 mt-0.5">Add subtle photographic grain</div>
+                                            </div>
+                                        </label>
+                                        <label className="flex items-start gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={noise} onChange={e => setNoise(e.target.checked)} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 bg-white" />
+                                            <div className="-mt-0.5">
+                                                <div className="text-sm font-semibold text-gray-900">Salt & Pepper / Gaussian Noise</div>
+                                                <div className="text-sm text-gray-500 mt-0.5">Add random pixel noise</div>
+                                            </div>
+                                        </label>
+                                        <label className="flex items-start gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={blur} onChange={e => setBlur(e.target.checked)} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 bg-white" />
+                                            <div className="-mt-0.5">
+                                                <div className="text-sm font-semibold text-gray-900">Gaussian Blur</div>
+                                                <div className="text-sm text-gray-500 mt-0.5">Slightly blur the image</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                )}
+                                
+                                <div className="mt-6 border border-blue-200 bg-blue-50/50 rounded-lg overflow-hidden">
+                                    <label className="flex items-center space-x-3 text-sm text-gray-700 p-4 cursor-pointer hover:bg-blue-50 transition-colors border-b border-blue-100">
+                                        <input type="checkbox" checked={includeAugInVal} onChange={e => setIncludeAugInVal(e.target.checked)} className="rounded bg-white border-blue-300 text-blue-600 w-4 h-4 focus:ring-blue-500" />
+                                        <span className="font-semibold text-blue-900">Include Augmented Data in Validation & Test Sets</span>
+                                    </label>
+
+                                    {!includeAugInVal && (
+                                        <div className="p-4 bg-blue-50/80 text-sm text-blue-800 flex items-start gap-3">
+                                            <span className="text-blue-500 font-bold">ℹ Note:</span>
+                                            <p>Data augmentation applies strictly to the <strong>Training</strong> set. Validation and Test sets will receive only original un-augmented images.</p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
-                        <p className="mt-3 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
-                            ℹ Data augmentation is applied exclusively to the Training set. Validation and Test sets receive only original un-augmented images.
-                        </p>
                     </div>
                 </div>
             </div>

@@ -475,9 +475,9 @@ export default function AnnotatorSetupPage() {
             <div className="flex flex-col gap-3">
               <label className="relative block">
                 <Button disabled={isUploadingPrelabels} className="w-full" asChild>
-                  <span>{isUploadingPrelabels ? 'Uploading...' : 'Upload Prelabels (.txt)'}</span>
+                  <span>{isUploadingPrelabels ? 'Uploading...' : (projectInfo?.type === 'KIE' ? 'Upload Prelabels (.json)' : 'Upload Prelabels (.txt)')}</span>
                 </Button>
-                <input type="file" multiple accept=".txt" className="hidden" onChange={handleUploadPrelabels} disabled={isUploadingPrelabels} />
+                <input type="file" multiple accept={projectInfo?.type === 'KIE' ? '.json' : '.txt'} className="hidden" onChange={handleUploadPrelabels} disabled={isUploadingPrelabels} />
               </label>
               {isUploadingPrelabels && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-2.5">
@@ -505,3 +505,5 @@ export default function AnnotatorSetupPage() {
     </div>
   );
 }
+
+

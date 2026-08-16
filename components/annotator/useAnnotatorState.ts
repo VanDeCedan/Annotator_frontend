@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 
@@ -16,6 +16,14 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
     const [prelabelStatus, setPrelabelStatus] = useState<string | null>(null);
     const [originalPrelabels, setOriginalPrelabels] = useState<any[]>([]);
     const [ocrCharset, setOcrCharset] = useState<string | null>(null);
+    const [dbnetModelPath, setDbnetModelPath] = useState<string | null>(null);
+    const [ocrEnableClass, setOcrEnableClass] = useState(false);
+    const [autoPredictEnabled, setAutoPredictEnabled] = useState(false);
+    const autoPredictEnabledRef = useRef(autoPredictEnabled);
+    useEffect(() => { autoPredictEnabledRef.current = autoPredictEnabled; }, [autoPredictEnabled]);
+    const [ocrConf, setOcrConf] = useState(0.25);
+    const ocrConfRef = useRef(ocrConf);
+    useEffect(() => { ocrConfRef.current = ocrConf; }, [ocrConf]);
     
     // Pre-label rotation state
     const [prelabelRotationEnabled, setPrelabelRotationEnabled] = useState(false);
@@ -30,6 +38,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
     const [prelabelWidthAdjustClasses, setPrelabelWidthAdjustClasses] = useState<number[]>([]);
     
     const [isSaving, setIsSaving] = useState(false);
+    const [isAiLoading, setIsAiLoading] = useState(false);
     
     // Box Images state
     const [boxImageNames, setBoxImageNames] = useState<string[]>([]);
@@ -61,6 +70,8 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                 if (proj) {
                     setProjectType(proj.type);
                     setOcrCharset(proj.ocr_charset || null);
+                    setDbnetModelPath(proj.dbnet_model_path || null);
+                    setOcrEnableClass(!!proj.ocr_enable_class);
                 }
                 setClasses(cRes.data);
                 if (cRes.data.length > 0) setActiveClassCode(cRes.data[0].code);
@@ -76,11 +87,12 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         if (!currentImageName) return;
         
         const loadLabels = async () => {
+            let shouldAutoPredict = false;
             try {
                 const res = await api.get(`/projects/${projectId}/labels/${currentImageName}`);
                 const data = res.data;
                 
-                if (data.type === 'Yolo' || data.type === 'Yolo OBB') {
+                if (data.type === 'Yolo' || data.type === 'Yolo OBB' || data.type === 'KIE') {
                     let initialLabels: any[] = [];
                     if (data.prelabels && data.prelabels.length > 0 && data.labels.length === 0) {
                         setOriginalPrelabels(data.prelabels);
@@ -134,30 +146,47 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                         }];
                     }
 
+                    if (data.labels && data.labels.length === 0 && autoPredictEnabledRef.current) {
+                        shouldAutoPredict = true;
+                    }
+                    
                     setLabels(initialLabels);
+                } else if (data.type === 'Ocr') {
+                    let val = '';
+                    if (data.label !== null) {
+                        val = data.label;
+                        setPrelabelStatus(null);
+                        if (data.class_code !== undefined && data.class_code !== -1) {
+                            setActiveClassCode(data.class_code);
+                        }
+                    }
+                    else if (data.prelabel !== null) {
+                        val = data.prelabel;
+                        setPrelabelStatus('Loaded from prelabel');
+                        if (data.prelabel_class_code !== undefined && data.prelabel_class_code !== -1) {
+                            setActiveClassCode(data.prelabel_class_code);
+                        }
+                        if (autoPredictEnabledRef.current) shouldAutoPredict = true;
+                    } else {
+                        val = '';
+                        setPrelabelStatus(null);
+                        if (classes.length > 0) {
+                            setActiveClassCode(classes[0].code);
+                        } else {
+                            setActiveClassCode(null);
+                        }
+                        if (autoPredictEnabledRef.current) shouldAutoPredict = true;
+                    }
+                    if (data.label === null && prefixEnabled && prefixValue && !val.startsWith(prefixValue)) {
+                        val = prefixValue + val;
+                    }
+                    setOcrValue(val);
                 } else if (data.type === 'Classification') {
                     if (data.label !== null) setActiveClassCode(data.label);
                     else if (data.prelabel !== null) {
                         setActiveClassCode(data.prelabel);
                         setPrelabelStatus('Loaded from prelabel');
                     } else setPrelabelStatus(null);
-                } else if (data.type === 'Ocr') {
-                    let val = '';
-                    if (data.label !== null) {
-                        val = data.label;
-                        setPrelabelStatus(null);
-                    }
-                    else if (data.prelabel !== null) {
-                        val = data.prelabel;
-                        setPrelabelStatus('Loaded from prelabel');
-                    } else {
-                        val = '';
-                        setPrelabelStatus(null);
-                    }
-                    if (data.label === null && prefixEnabled && prefixValue && !val.startsWith(prefixValue)) {
-                        val = prefixValue + val;
-                    }
-                    setOcrValue(val);
                 } else if (data.type === 'Deskewer') {
                     if (data.label !== null) {
                         setDeskewAngle(data.label);
@@ -185,6 +214,38 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                 }
             } catch (err) {
                 console.error(err);
+            }
+
+            if (shouldAutoPredict) {
+                try {
+                    setIsAiLoading(true);
+                    const predictRes = await api.post(`/projects/${projectId}/predict-live`, {
+                        img_name: currentImageName,
+                        conf_thresh: ocrConfRef.current,
+                    });
+                    if (predictRes.data) {
+                        if (predictRes.data.boxes) {
+                            const newLabels = predictRes.data.boxes.map((b: any) => ({
+                                class_code: b.class_code,
+                                coordinates: b.coordinates,
+                                box_image: null
+                            }));
+                            setLabels(newLabels);
+                            setPrelabelStatus('AI predicted');
+                        } else if (predictRes.data.text !== undefined) {
+                            let predicted = predictRes.data.text as string;
+                            if (prefixEnabled && prefixValue && !predicted.startsWith(prefixValue)) {
+                                predicted = prefixValue + predicted;
+                            }
+                            setOcrValue(predicted);
+                            setPrelabelStatus('AI predicted');
+                        }
+                    }
+                } catch (err) {
+                    console.error('Auto-predict failed', err);
+                } finally {
+                    setIsAiLoading(false);
+                }
             }
         };
         
@@ -352,11 +413,19 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
     };
 
     const saveCurrent = async () => {
-        if (!currentImageName) return;
+        if (!currentImageName) return true;
+        
+        // No check required for text_value as KIE BBOX and class projects do not transcribe OCR.
+
         setIsSaving(true);
         try {
             if (projectType === 'Yolo' || projectType === 'Yolo OBB') {
                 await api.post(`/projects/${projectId}/labels/yolo`, {
+                    img_name: currentImageName,
+                    labels
+                });
+            } else if (projectType === 'KIE') {
+                await api.post(`/projects/${projectId}/labels/kie`, {
                     img_name: currentImageName,
                     labels
                 });
@@ -379,7 +448,8 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                 }
                 await api.post(`/projects/${projectId}/labels/ocr`, {
                     img_name: currentImageName,
-                    value: ocrValue
+                    value: ocrValue,
+                    class_code: activeClassCode !== null ? activeClassCode : -1
                 });
             } else if (projectType === 'Deskewer') {
                 const cropBoxStr = deskewCrop ? `${deskewCrop.x},${deskewCrop.y},${deskewCrop.w},${deskewCrop.h}` : null;
@@ -391,8 +461,10 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
             }
             showToast('Saved', 'success');
             setPrelabelStatus(null);
+            return true;
         } catch (err) {
             showToast('Failed to save', 'error');
+            return false;
         } finally {
             setIsSaving(false);
         }
@@ -401,7 +473,8 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
     const [selectedLabelIndex, setSelectedLabelIndex] = useState<number | null>(null);
 
     const nextImage = async () => {
-        await saveCurrent();
+        const saved = await saveCurrent();
+        if (!saved) return;
         if (currentIndex < imageNames.length - 1) {
             setCurrentIndex(currentIndex + 1);
             setSelectedLabelIndex(null);
@@ -412,7 +485,8 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
     };
     
     const prevImage = async () => {
-        await saveCurrent();
+        const saved = await saveCurrent();
+        if (!saved) return;
         if (currentIndex > 0) {
             setCurrentIndex(currentIndex - 1);
             setSelectedLabelIndex(null);
@@ -470,7 +544,9 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         }
     };
 
-    const jumpToImage = (targetIndex: number) => {
+    const jumpToImage = async (targetIndex: number) => {
+        const saved = await saveCurrent();
+        if (!saved) return;
         if (targetIndex >= 0 && targetIndex < imageNames.length) {
             setCurrentIndex(targetIndex);
             setSelectedLabelIndex(null);
@@ -491,11 +567,17 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                     img_name: currentImageName,
                     labels: []
                 });
+            } else if (projectType === 'KIE') {
+                await api.post(`/projects/${projectId}/labels/kie`, {
+                    img_name: currentImageName,
+                    labels: []
+                });
             }
             showToast('Saved as Background', 'success');
             setPrelabelStatus(null);
         } catch (err) {
             showToast('Failed to save', 'error');
+            return false;
         } finally {
             setIsSaving(false);
             if (currentIndex < imageNames.length - 1) {
@@ -558,7 +640,92 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         showToast(`Added box image (${randomImg})`, 'success');
     }, [boxImageNames, imageDimensions, boxImageDefaultWidth, boxImageDefaultHeight, boxImageDefaultClass, activeClassCode, classes, projectType, showToast]);
 
+
+
+    const runDbnetDetection = async (boxThresh: number = 0.7) => {
+        if (!currentImageName || projectType !== 'KIE') return;
+        setIsAiLoading(true);
+        try {
+            const res = await api.post(`/projects/${projectId}/kie/detect-boxes`, { img_name: currentImageName, box_thresh: boxThresh });
+            if (res.data && res.data.boxes) {
+                const newLabels = res.data.boxes.map((coords: string) => ({
+                    class_code: classes.length > 0 ? classes[0].code : 0,
+                    coordinates: coords,
+                    text_value: ""
+                }));
+                setLabels(newLabels); // Écrase les anciennes prédictions / pre-labels
+                showToast(`Detected ${newLabels.length} boxes (Replaced existing)`, 'success');
+            }
+        } catch (err) {
+            showToast('Failed to run DBNet detection', 'error');
+            console.error(err);
+        } finally {
+            setIsAiLoading(false);
+        }
+    };
+
+    const runParseqOcr = async (minConfidence: number = 0.0) => {
+        if (!currentImageName || projectType !== 'KIE' || labels.length === 0) return;
+        setIsAiLoading(true);
+        try {
+            const boxes = labels.map(l => l.coordinates);
+            const res = await api.post(`/projects/${projectId}/kie/read-text`, { 
+                img_name: currentImageName,
+                boxes,
+                min_confidence: minConfidence
+            });
+            if (res.data && res.data.texts) {
+                const texts = res.data.texts;
+                const updatedLabels = labels.map((l, i) => ({
+                    ...l,
+                    text_value: texts[i] !== undefined && texts[i] !== "" ? texts[i] : l.text_value
+                }));
+                setLabels(updatedLabels);
+                showToast('OCR applied to boxes', 'success');
+            }
+        } catch (err) {
+            showToast('Failed to run Parseq OCR', 'error');
+            console.error(err);
+        } finally {
+            setIsAiLoading(false);
+        }
+    };
+
+    const runLivePrediction = async (confThresh?: number) => {
+        if (!currentImageName || !dbnetModelPath) return;
+        setIsAiLoading(true);
+        try {
+            const payload: any = { img_name: currentImageName };
+            if (confThresh !== undefined) payload.conf_thresh = confThresh;
+            const res = await api.post(`/projects/${projectId}/predict-live`, payload);
+            if (res.data) {
+                if (res.data.boxes) {
+                    const newLabels = res.data.boxes.map((b: any) => ({
+                        class_code: b.class_code,
+                        coordinates: b.coordinates,
+                        box_image: null
+                    }));
+                    setLabels(newLabels);
+                    showToast(`Predicted ${newLabels.length} boxes (Replaced existing)`, 'success');
+                } else if (res.data.text !== undefined) {
+                    setOcrValue(res.data.text);
+                    showToast('OCR Prediction completed', 'success');
+                }
+            }
+        } catch (err: any) {
+            showToast(err.response?.data?.detail || 'Failed to run prediction', 'error');
+            console.error(err);
+        } finally {
+            setIsAiLoading(false);
+        }
+    };
+
     return {
+        runDbnetDetection,
+        runParseqOcr,
+        runLivePrediction,
+        isAiLoading,
+
         currentIndex,
         currentImageName,
         projectType,
@@ -613,6 +780,13 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         boxImageDefaultHeight,
         setBoxImageDefaultHeight,
         addRandomBoxImage,
-        ocrCharset
+        ocrCharset,
+        dbnetModelPath,
+        ocrEnableClass,
+        autoPredictEnabled,
+        setAutoPredictEnabled,
+        ocrConf,
+        setOcrConf,
     };
 }
+

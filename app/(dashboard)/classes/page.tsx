@@ -130,8 +130,8 @@ export default function ClassesPage() {
       });
     } else {
       setEditingId(null);
-      // Automatically select the first non-OCR project if on the root page
-      const eligibleProjects = projects.filter(p => p.type !== 'Ocr');
+      // Automatically select the first eligible project if on the root page
+      const eligibleProjects = projects.filter(p => p.type !== 'Ocr' || p.ocr_enable_class);
       setFormData({ 
         selectedProjectId: projectId ? String(projectId) : (eligibleProjects.length > 0 ? String(eligibleProjects[0].id) : ''), 
         label: '', 
@@ -193,7 +193,7 @@ export default function ClassesPage() {
     },
   ];
 
-  if (projectId && projectInfo?.type === 'Ocr') {
+  if (projectId && projectInfo?.type === 'Ocr' && !projectInfo?.ocr_enable_class) {
     return (
       <div className="text-center py-20">
         <h2 className="text-xl font-bold text-black mb-4">OCR Projects don&apos;t use predefined classes.</h2>
@@ -249,7 +249,7 @@ export default function ClassesPage() {
               value={formData.selectedProjectId}
               onChange={(e) => setFormData({ ...formData, selectedProjectId: e.target.value })}
               options={projects
-                .filter(p => p.type !== 'Ocr')
+                .filter(p => p.type !== 'Ocr' || p.ocr_enable_class)
                 .map(p => ({ value: String(p.id), label: p.name }))}
               required
             />

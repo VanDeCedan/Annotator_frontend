@@ -5,6 +5,7 @@ interface Point { x: number; y: number; }
 interface Label {
     class_code: number;
     coordinates: string; // x1 y1 x2 y2 ...
+    text_value?: string;
     box_image?: string | null;
 }
 
@@ -159,12 +160,20 @@ export function AnnotatorCanvas({
     // Keyboard delete and rotation
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (selectedLabelIndex === null) return;
-            
             // Do not handle key events if user is typing in an input field
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
                 return;
             }
+
+            if (e.key === 'Escape') {
+                resetZoom();
+                if (setSelectedLabelIndex) setSelectedLabelIndex(null);
+                setMode('idle');
+                if (setZoomToAreaEnabled) setZoomToAreaEnabled(false);
+                return;
+            }
+
+            if (selectedLabelIndex === null) return;
             
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 const newLabels = [...labels];
@@ -206,7 +215,7 @@ export function AnnotatorCanvas({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedLabelIndex, labels, onLabelsChange, setSelectedLabelIndex, projectType, image, rotationStep, autoAdaptBox]);
+    }, [selectedLabelIndex, labels, onLabelsChange, setSelectedLabelIndex, projectType, image, rotationStep, autoAdaptBox, resetZoom, setZoomToAreaEnabled]);
 
     useEffect(() => {
         const img = new Image();
@@ -249,6 +258,19 @@ export function AnnotatorCanvas({
         ctx.translate(offset.x, offset.y);
         ctx.scale(scale, scale);
         ctx.drawImage(image, 0, 0);
+
+        // Global color overlay for image-level classes
+        if ((projectType === 'Classification' || projectType === 'Ocr') && activeClassCode !== null) {
+            const cls = classes.find(c => c.code === activeClassCode);
+            if (cls) {
+                ctx.fillStyle = cls.color + '40'; // 25% opacity
+                ctx.fillRect(0, 0, image.width, image.height);
+                
+                ctx.strokeStyle = cls.color;
+                ctx.lineWidth = 4 / scale;
+                ctx.strokeRect(0, 0, image.width, image.height);
+            }
+        }
 
         // Draw Labels
         labels.forEach((lbl, idx) => {
@@ -334,7 +356,7 @@ export function AnnotatorCanvas({
                 }
                 ctx.restore();
                 
-            } else if (projectType === 'Yolo' && coords.length === 4) {
+            } else if ((projectType === 'Yolo' || projectType === 'KIE') && coords.length === 4) {
                 const [cx, cy, w, h] = coords;
                 const x1 = (cx - w/2) * image.width;
                 const y1 = (cy - h/2) * image.height;
@@ -513,7 +535,7 @@ export function AnnotatorCanvas({
                     if (Math.abs(lx - (hw)) <= edgeHitSize && ly >= -hh && ly <= hh) { setMode('resizing_obb'); setResizeHandle('r'); setOriginalBox(parsed); return; }
                 }
 
-            } else if (projectType === 'Yolo' && coords.length === 4) {
+            } else if ((projectType === 'Yolo' || projectType === 'KIE') && coords.length === 4) {
                 const [cx, cy, w, h] = coords;
                 const x1 = (cx - w/2) * image.width;
                 const y1 = (cy - h/2) * image.height;
@@ -557,7 +579,7 @@ export function AnnotatorCanvas({
                     setOriginalBox(parsed);
                     break;
                 }
-            } else if (projectType === 'Yolo' && coords.length === 4) {
+            } else if ((projectType === 'Yolo' || projectType === 'KIE') && coords.length === 4) {
                 const [cx, cy, w, h] = coords;
                 const px = cx * image.width;
                 const py = cy * image.height;
@@ -590,7 +612,7 @@ export function AnnotatorCanvas({
         if (projectType === 'Yolo OBB') {
             setMode('drawing_obb');
             setCurrentPoints([pos, pos]);
-        } else if (projectType === 'Yolo') {
+        } else if ((projectType === 'Yolo' || projectType === 'KIE')) {
             setMode('drawing_yolo');
             setCurrentPoints([pos, pos]);
         }
@@ -613,7 +635,7 @@ export function AnnotatorCanvas({
             const lbl = newLabels[selectedLabelIndex];
             const coords = lbl.coordinates.split(' ').map(Number);
             
-            if (projectType === 'Yolo') {
+            if ((projectType === 'Yolo' || projectType === 'KIE')) {
                 const newCx = (pos.x - dragOffset.x) / image.width;
                 const newCy = (pos.y - dragOffset.y) / image.height;
                 coords[0] = newCx;

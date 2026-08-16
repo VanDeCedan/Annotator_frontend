@@ -33,6 +33,9 @@ interface ExportConfig {
   test_pct: number;
   aug_enabled: boolean;
   augmentation: AugOptions;
+  kie_export_format?: 'dbnet' | 'kie';
+  yolo_export_format?: 'yolo' | 'dbnet';
+  ocr_export_format?: 'ocr' | 'vit';
 }
 
 // ─── Helper Components ────────────────────────────────────────────────────────
@@ -131,6 +134,9 @@ export default function DatasetPage() {
       ocr_noise_intensity: 0,
       ocr_blur_intensity: 0,
     },
+    kie_export_format: 'dbnet',
+    yolo_export_format: 'yolo',
+    ocr_export_format: 'ocr',
   });
 
 
@@ -234,6 +240,9 @@ export default function DatasetPage() {
         test_pct: config.test_pct,
         yolo_version: config.yolo_version,
         augmentation: config.aug_enabled ? config.augmentation : null,
+        kie_export_format: config.kie_export_format || 'dbnet',
+        yolo_export_format: config.yolo_export_format || 'yolo',
+        ocr_export_format: config.ocr_export_format || 'ocr',
       };
 
 
@@ -457,6 +466,42 @@ export default function DatasetPage() {
             </select>
             <p className="text-xs text-gray-500 mt-1">
               Determines the <code>data.yaml</code> format included in the ZIP.
+            </p>
+          </div>
+        )}
+
+        {/* YOLO Format Selection */}
+        {isYolo && config.export_mode === 'full' && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-black mb-1">Export Format</label>
+            <select
+              value={config.yolo_export_format || 'yolo'}
+              onChange={(e: any) => setConfig((c) => ({ ...c, yolo_export_format: e.target.value }))}
+              className="w-full max-w-xs border border-gray-300 px-3 py-2 rounded text-black bg-white focus:outline-none focus:ring focus:border-blue-300"
+            >
+              <option value="yolo">YOLO Format (images/ + labels/ txt files)</option>
+              <option value="dbnet">DBNet Format (images/ + gt/ txt files)</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Choose &quot;YOLO Format&quot; for standard bounding box training or &quot;DBNet Format&quot; for polygon detection.
+            </p>
+          </div>
+        )}
+
+        {/* OCR Format Selection */}
+        {projectInfo?.type === 'Ocr' && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-black mb-1">Export Format</label>
+            <select
+              value={config.ocr_export_format || 'ocr'}
+              onChange={(e: any) => setConfig((c) => ({ ...c, ocr_export_format: e.target.value }))}
+              className="w-full max-w-xs border border-gray-300 px-3 py-2 rounded text-black bg-white focus:outline-none focus:ring focus:border-blue-300"
+            >
+              <option value="ocr">OCR Format (images/ + labels/ txt files)</option>
+              <option value="vit">ViT Multimodal Format (crops/ + dataset.csv)</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Choose &quot;OCR Format&quot; for transcription or &quot;ViT Multimodal Format&quot; for crop image and text classification.
             </p>
           </div>
         )}

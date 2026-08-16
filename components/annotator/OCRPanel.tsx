@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 interface OCRPanelProps {
   value: string;
@@ -10,11 +10,22 @@ interface OCRPanelProps {
   prefixValue: string;
   setPrefixValue: (value: string) => void;
   ocrCharset?: string | null;
+  hasModel?: boolean;
+  isAiLoading?: boolean;
+  onPredict?: (confThresh: number) => void;
+  autoPredictEnabled?: boolean;
+  setAutoPredictEnabled?: (enabled: boolean) => void;
+  ocrConf?: number;
+  setOcrConf?: (v: number) => void;
 }
 
-export function OCRPanel({ value, onChange, onNext, onPrev, prefixEnabled, setPrefixEnabled, prefixValue, setPrefixValue, ocrCharset }: OCRPanelProps) {
-  const [fontSize, setFontSize] = useState(14);
-  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('left');
+export function OCRPanel({ value, onChange, onNext, onPrev, prefixEnabled, setPrefixEnabled, prefixValue, setPrefixValue, ocrCharset, hasModel, isAiLoading, onPredict, autoPredictEnabled = false, setAutoPredictEnabled, ocrConf: ocrConfProp, setOcrConf: setOcrConfProp }: OCRPanelProps) {
+  const [fontSize, setFontSize] = React.useState(14);
+  const [textAlign, setTextAlign] = React.useState<'left' | 'center' | 'right'>('left');
+  // Use lifted state if provided, otherwise local fallback
+  const [localOcrConf, setLocalOcrConf] = React.useState(0.25);
+  const ocrConf = ocrConfProp !== undefined ? ocrConfProp : localOcrConf;
+  const setOcrConf = setOcrConfProp ?? setLocalOcrConf;
 
   const invalidChars = ocrCharset 
     ? Array.from(new Set(Array.from(value).filter(char => !ocrCharset.includes(char))))
@@ -40,8 +51,41 @@ export function OCRPanel({ value, onChange, onNext, onPrev, prefixEnabled, setPr
           <p className="text-[11px] text-gray-500 mt-0.5">Transcribe the text in the image</p>
         </div>
         
-        {/* Prefix Controls */}
+        {/* Prefix & Prediction Controls */}
         <div className="flex items-center gap-2">
+          {hasModel && onPredict && (
+            <div className="flex items-center gap-2 mr-2 border-r border-gray-200 pr-2">
+              <span className="text-[10px] text-gray-500 font-semibold">Min Conf: {ocrConf}</span>
+              <input
+                type="range"
+                min="0.0"
+                max="1.0"
+                step="0.05"
+                value={ocrConf}
+                onChange={(e) => setOcrConf(parseFloat(e.target.value))}
+                className="w-16 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              />
+              <button
+                type="button"
+                onClick={() => onPredict(ocrConf)}
+                disabled={isAiLoading}
+                className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
+              >
+                {isAiLoading ? 'Predicting...' : '🎯 AI Predict'}
+              </button>
+              {setAutoPredictEnabled && (
+                <label className="flex items-center gap-1.5 ml-2 text-[11px] text-gray-600 font-bold cursor-pointer uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    checked={autoPredictEnabled}
+                    onChange={(e) => setAutoPredictEnabled(e.target.checked)}
+                    className="w-3 h-3 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  Auto-Predict
+                </label>
+              )}
+            </div>
+          )}
           <label className="flex items-center gap-1.5 text-[11px] text-gray-600 font-bold cursor-pointer uppercase tracking-wider">
             <input
               type="checkbox"

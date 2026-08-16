@@ -20,7 +20,7 @@ export default function ProjectsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ name: '', type: 'Yolo', ocr_charset: '' });
+  const [formData, setFormData] = useState({ name: '', type: 'Yolo', ocr_charset: '', dbnet_model_path: '', ocr_enable_class: false, model_img_h: '', model_img_w: '' });
 
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; id: number | null }>({
     isOpen: false,
@@ -40,22 +40,7 @@ export default function ProjectsPage() {
     isDeleting: false,
   });
 
-  // Auto-annotate dialog state
-  const [autoAnnotateDialog, setAutoAnnotateDialog] = useState<{
-    isOpen: boolean;
-    project: any | null;
-    file: File | null;
-    isSubmitting: boolean;
-  }>({
-    isOpen: false,
-    project: null,
-    file: null,
-    isSubmitting: false,
-  });
 
-  // Progress tracking state (SSE)
-  const [activeProgressProjectId, setActiveProgressProjectId] = useState<number | null>(null);
-  const [progressData, setProgressData] = useState<{ total: number; current: number; status: string } | null>(null);
 
   const loadProjects = async () => {
     try {
@@ -76,11 +61,17 @@ export default function ProjectsPage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const payload = {
+        ...formData,
+        model_img_h: formData.model_img_h ? parseInt(formData.model_img_h, 10) : null,
+        model_img_w: formData.model_img_w ? parseInt(formData.model_img_w, 10) : null,
+      };
+
       if (editingId) {
-        await api.put(`/projects/${editingId}`, formData);
+        await api.put(`/projects/${editingId}`, payload);
         showToast('Project updated', 'success');
       } else {
-        await api.post('/projects', formData);
+        await api.post('/projects', payload);
         showToast('Project created', 'success');
       }
       setIsModalOpen(false);
@@ -119,85 +110,23 @@ export default function ProjectsPage() {
     }
   };
 
-  const handleAutoAnnotate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!autoAnnotateDialog.project || !autoAnnotateDialog.file) return;
 
-    setAutoAnnotateDialog((d) => ({ ...d, isSubmitting: true }));
-    const formData = new FormData();
-    formData.append('file', autoAnnotateDialog.file);
-
-    try {
-      setAutoAnnotateDialog({ isOpen: false, project: null, file: null, isSubmitting: false });
-      setActiveProgressProjectId(autoAnnotateDialog.project.id);
-      setProgressData({ total: 1, current: 0, status: 'processing' });
-      
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${autoAnnotateDialog.project.id}/auto-annotate`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to start inference stream');
-      }
-
-      if (response.body) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split('\n\n');
-          buffer = parts.pop() || '';
-
-          for (const part of parts) {
-            if (part.startsWith('data: ')) {
-              const dataStr = part.replace('data: ', '').trim();
-              if (dataStr) {
-                try {
-                  const data = JSON.parse(dataStr);
-                  if (data.status === 'processing') {
-                    setProgressData(data);
-                  } else if (data.status === 'completed') {
-                    setProgressData(null);
-                    setActiveProgressProjectId(null);
-                    showToast('Auto-annotation completed successfully!', 'success');
-                  } else if (data.status === 'error') {
-                    setProgressData(null);
-                    setActiveProgressProjectId(null);
-                    showToast(`Auto-annotation failed: ${data.error}`, 'error');
-                  }
-                } catch (e) {
-                  console.error("Error parsing SSE data", e);
-                }
-              }
-            }
-          }
-        }
-      }
-
-    } catch (err: any) {
-      showToast(err.response?.data?.detail || err.message || 'Failed to start auto-annotation', 'error');
-      setAutoAnnotateDialog((d) => ({ ...d, isSubmitting: false }));
-      setActiveProgressProjectId(null);
-      setProgressData(null);
-    }
-  };
 
   const openModal = (project?: any) => {
     if (project) {
       setEditingId(project.id);
-      setFormData({ name: project.name, type: project.type, ocr_charset: project.ocr_charset || '' });
+      setFormData({ 
+        name: project.name, 
+        type: project.type, 
+        ocr_charset: project.ocr_charset || '', 
+        dbnet_model_path: project.dbnet_model_path || '',
+        ocr_enable_class: !!project.ocr_enable_class,
+        model_img_h: project.model_img_h ? String(project.model_img_h) : '',
+        model_img_w: project.model_img_w ? String(project.model_img_w) : ''
+      });
     } else {
       setEditingId(null);
-      setFormData({ name: '', type: 'Yolo', ocr_charset: '' });
+      setFormData({ name: '', type: 'Yolo', ocr_charset: '', dbnet_model_path: '', ocr_enable_class: false, model_img_h: '', model_img_w: '' });
     }
     setIsModalOpen(true);
   };
@@ -249,9 +178,6 @@ export default function ProjectsPage() {
           )}
           {user?.role === 'admin' && (
             <>
-              <Button size="sm" variant="outline" onClick={() => setAutoAnnotateDialog({ isOpen: true, project: row, file: null, isSubmitting: false })}>
-                Auto-Annotate
-              </Button>
               <Button size="sm" variant="warning" onClick={() => openModal(row)}>
                 Edit
               </Button>
@@ -306,12 +232,49 @@ export default function ProjectsPage() {
             ]}
           />
           {formData.type === 'Ocr' && (
-            <Input
-              label="Allowed Charset (Optional)"
-              value={formData.ocr_charset}
-              onChange={(e) => setFormData({ ...formData, ocr_charset: e.target.value })}
-              placeholder="e.g. 0123456789ABCDEF"
-            />
+            <div className="flex flex-col gap-4 mt-2">
+              <Input
+                label="Allowed Charset (Optional)"
+                value={formData.ocr_charset}
+                onChange={(e) => setFormData({ ...formData, ocr_charset: e.target.value })}
+                placeholder="e.g. 0123456789ABCDEF"
+              />
+              <label className="flex items-center gap-2 cursor-pointer mt-1">
+                <input
+                  type="checkbox"
+                  checked={formData.ocr_enable_class || false}
+                  onChange={(e) => setFormData({ ...formData, ocr_enable_class: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-300"
+                />
+                <span className="text-sm font-medium text-black">Enable class selection for OCR boxes</span>
+              </label>
+            </div>
+          )}
+          {(formData.type === 'Yolo' || formData.type === 'Yolo OBB' || formData.type === 'Ocr') && (
+            <>
+              <Input
+                label="ONNX Model Path (.onnx) (Optional)"
+                value={formData.dbnet_model_path}
+                onChange={(e) => setFormData({ ...formData, dbnet_model_path: e.target.value })}
+                placeholder={formData.type === 'Ocr' ? "e.g. data/parseq_om.onnx" : "e.g. data/best.onnx"}
+              />
+              <div className="flex gap-2">
+                <Input
+                  label="Model Img Height (Optional)"
+                  type="number"
+                  value={formData.model_img_h}
+                  onChange={(e) => setFormData({ ...formData, model_img_h: e.target.value })}
+                  placeholder="e.g. 48"
+                />
+                <Input
+                  label="Model Img Width (Optional)"
+                  type="number"
+                  value={formData.model_img_w}
+                  onChange={(e) => setFormData({ ...formData, model_img_w: e.target.value })}
+                  placeholder="e.g. 256"
+                />
+              </div>
+            </>
           )}
           {!!editingId && (
             <p className="text-xs text-yellow-600">⚠ Project type cannot be changed after creation.</p>
@@ -408,73 +371,7 @@ export default function ProjectsPage() {
         </div>
       </Modal>
 
-      {/* Auto Annotate Modal */}
-      <Modal
-        isOpen={autoAnnotateDialog.isOpen}
-        onClose={() => !autoAnnotateDialog.isSubmitting && setAutoAnnotateDialog({ isOpen: false, project: null, file: null, isSubmitting: false })}
-        title={`Auto-Annotate: ${autoAnnotateDialog.project?.name}`}
-      >
-        <form onSubmit={handleAutoAnnotate} className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Upload an ONNX model to automatically generate pre-labels for unannotated and skipped images. This process runs in the background.
-          </p>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">ONNX Model File</label>
-            <input
-              type="file"
-              accept=".onnx"
-              onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                setAutoAnnotateDialog((d) => ({ ...d, file }));
-              }}
-              required
-              className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setAutoAnnotateDialog({ isOpen: false, project: null, file: null, isSubmitting: false })}
-              disabled={autoAnnotateDialog.isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" isLoading={autoAnnotateDialog.isSubmitting} disabled={!autoAnnotateDialog.file}>
-              Start Inference
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Progress Modal */}
-      <Modal
-        isOpen={!!activeProgressProjectId}
-        onClose={() => {}} // Disallow close from overlay click to avoid accidental hide
-        title="Auto-Annotation Progress"
-      >
-        <div className="space-y-4 text-center py-4">
-          <p className="text-sm text-gray-600">Please wait while the model processes your images...</p>
-          
-          {progressData ? (
-            <div className="space-y-2">
-              <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden shadow-inner">
-                <div 
-                  className="bg-blue-600 h-4 rounded-full transition-all duration-300" 
-                  style={{ width: `${progressData.total > 0 ? (progressData.current / progressData.total) * 100 : 0}%` }}
-                ></div>
-              </div>
-              <p className="text-xs font-bold text-gray-700">
-                {progressData.current} / {progressData.total} images processed
-              </p>
-            </div>
-          ) : (
-            <div className="flex justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-          )}
-        </div>
-      </Modal>
     </div>
   );
 }
+

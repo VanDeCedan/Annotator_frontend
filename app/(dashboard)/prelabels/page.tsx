@@ -62,7 +62,7 @@ export default function PreLabelsPage() {
       return;
     }
     if (selectedFiles.length === 0) {
-      showToast('Please select at least one .txt file', 'error');
+      showToast('Please select at least one file', 'error');
       return;
     }
 
@@ -180,7 +180,7 @@ export default function PreLabelsPage() {
           />
 
           <div>
-            <label className="block text-sm font-medium text-black mb-1">Select Pre-label Files (.txt)</label>
+            <label className="block text-sm font-medium text-black mb-1">Select Pre-label Files</label>
             <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md bg-gray-50 hover:bg-gray-100 transition">
               <div className="space-y-1 text-center">
                 <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
@@ -189,11 +189,21 @@ export default function PreLabelsPage() {
                 <div className="flex text-sm text-gray-600 justify-center">
                   <label className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500 px-1">
                     <span>Upload files</span>
-                    <input type="file" className="sr-only" multiple accept=".txt" onChange={handleFileChange} />
+                    <input 
+                      type="file" 
+                      className="sr-only" 
+                      multiple 
+                      accept={projects.find(p => String(p.id) === selectedProjectId)?.type === 'KIE' ? ".json" : ".txt"} 
+                      onChange={handleFileChange} 
+                    />
                   </label>
                   <p className="pl-1">or drag and drop</p>
                 </div>
-                <p className="text-xs text-gray-500">Only .txt files are supported</p>
+                <p className="text-xs text-gray-500">
+                  {projects.find(p => String(p.id) === selectedProjectId)?.type === 'KIE' 
+                    ? "Only .json files are supported for KIE" 
+                    : "Only .txt files are supported"}
+                </p>
               </div>
             </div>
             {selectedFiles.length > 0 && (
@@ -258,3 +268,4 @@ export default function PreLabelsPage() {
     </div>
   );
 }
+
