@@ -229,6 +229,8 @@ export default function ProjectsPage() {
               { value: 'Classification', label: 'Image Classification' },
               { value: 'Ocr', label: 'OCR — Text Transcription' },
               { value: 'Deskewer', label: 'Deskewer — Image Straightening' },
+              { value: 'KIE', label: 'KIE — Key Information Extraction' },
+              { value: 'NER', label: 'NER — Text Named Entity Recognition' },
             ]}
           />
           {formData.type === 'Ocr' && (

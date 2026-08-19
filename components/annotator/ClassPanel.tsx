@@ -26,8 +26,8 @@ export function ClassPanel({ classes, activeClassCode, onSelectClass, projectTyp
           {(projectType === 'Classification' || projectType === 'Ocr') 
             ? 'Select to assign class' 
             : selectedLabelIndex !== null && selectedLabelIndex !== undefined 
-              ? 'Change class of selected box' 
-              : 'Select then draw on image'}
+              ? 'Change class of selected item' 
+              : projectType === 'NER' ? 'Select then highlight text' : 'Select then draw on image'}
         </p>
       </div>
 

@@ -6,6 +6,7 @@ import { TopNavbar } from '@/components/annotator/TopNavbar';
 import { ClassPanel } from '@/components/annotator/ClassPanel';
 import { OCRPanel } from '@/components/annotator/OCRPanel';
 import { AnnotatorCanvas } from '@/components/annotator/AnnotatorCanvas';
+import { NERAnnotator } from '@/components/annotator/NERAnnotator';
 import { useAnnotatorState } from '@/components/annotator/useAnnotatorState';
 import api from '@/lib/api';
 
@@ -280,7 +281,7 @@ export default function AnnotatePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#EAEEF5]">
         <div className="bg-white border rounded shadow-md p-8 text-center">
-          <p className="text-black font-medium mb-2">No images found for this session.</p>
+          <p className="text-black font-medium mb-2">No {projectType === 'NER' ? 'texts' : 'images'} found for this session.</p>
           <p className="text-red-500 text-xs mb-4">Debug: Mode={mode}, ProjectId={projectId}. Error: {debugError || 'None'}</p>
           <button
             onClick={() => router.push(`/annotator?project=${projectId}`)}
@@ -776,6 +777,17 @@ export default function AnnotatePage() {
                   )}
                 </div>
               </div>
+            ) : projectType === 'NER' ? (
+              <NERAnnotator
+                fileUrl={imageUrl}
+                labels={labels}
+                onLabelsChange={setLabels}
+                activeClassCode={activeClassCode}
+                classes={classes}
+                selectedLabelIndex={selectedLabelIndex}
+                setSelectedLabelIndex={setSelectedLabelIndex}
+                onAnnotationAdded={handleAnnotationAdded}
+              />
             ) : (
               <AnnotatorCanvas
                 projectId={projectId}
@@ -820,7 +832,7 @@ export default function AnnotatePage() {
             >
               Clear All
             </button>
-            {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'KIE') && (
+            {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'KIE' || projectType === 'NER') && (
               <button
                 onClick={() => {
                   if(window.confirm('Mark this image as background (empty) and go to next?')) {
@@ -949,7 +961,7 @@ export default function AnnotatePage() {
             )}
           </button>
           <div className={`flex flex-col h-full w-full overflow-y-auto ${!isRightSidebarOpen && 'hidden'}`}>
-          {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'Classification' || projectType === 'KIE' || (projectType === 'Ocr' && ocrEnableClass)) && (
+          {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'Classification' || projectType === 'KIE' || projectType === 'NER' || (projectType === 'Ocr' && ocrEnableClass)) && (
             <ClassPanel
               classes={classes}
               activeClassCode={activeClassCode}

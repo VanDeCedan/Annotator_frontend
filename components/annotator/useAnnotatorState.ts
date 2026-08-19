@@ -211,6 +211,16 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                         setDeskewCrop(null);
                         setPrelabelStatus(null);
                     }
+                } else if (data.type === 'NER') {
+                    let initialLabels: any[] = [];
+                    if (data.prelabels && data.prelabels.length > 0 && data.labels.length === 0) {
+                        initialLabels = data.prelabels;
+                        setPrelabelStatus('Loaded from prelabels');
+                    } else {
+                        initialLabels = data.labels || [];
+                        setPrelabelStatus(null);
+                    }
+                    setLabels(initialLabels);
                 }
             } catch (err) {
                 console.error(err);
@@ -458,6 +468,11 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                     angle: deskewAngle,
                     crop_box: cropBoxStr
                 });
+            } else if (projectType === 'NER') {
+                await api.post(`/projects/${projectId}/labels/ner`, {
+                    file_name: currentImageName,
+                    labels
+                });
             }
             showToast('Saved', 'success');
             setPrelabelStatus(null);
@@ -480,7 +495,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
             setSelectedLabelIndex(null);
             setImageDimensions(null);
         } else {
-             showToast('Reached end of images', 'success');
+             showToast(`Reached end of ${projectType === 'NER' ? 'texts' : 'images'}`, 'success');
         }
     };
     
@@ -501,7 +516,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                 img_name: currentImageName
             });
         } catch (err) {
-            console.error('Failed to mark image as skipped', err);
+            console.error(`Failed to mark ${projectType === 'NER' ? 'text' : 'image'} as skipped`, err);
         }
         
         if (currentIndex < imageNames.length - 1) {
@@ -509,17 +524,17 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
             setSelectedLabelIndex(null);
             setImageDimensions(null);
         } else {
-             showToast('Reached end of images', 'success');
+             showToast(`Reached end of ${projectType === 'NER' ? 'texts' : 'images'}`, 'success');
         }
     };
 
     const deleteImage = async () => {
         if (!currentImageName) return;
-        if (!confirm('Are you sure you want to permanently delete this image from the workspace and dataset?')) return;
+        if (!confirm(`Are you sure you want to permanently delete this ${projectType === 'NER' ? 'text file' : 'image'} from the workspace and dataset?`)) return;
         
         try {
             await api.delete(`/projects/${projectId}/images/local_workspace/${currentImageName}`);
-            showToast('Image deleted', 'success');
+            showToast(`${projectType === 'NER' ? 'Text file' : 'Image'} deleted`, 'success');
             
             // Advance to next image but keep imageNames updated? 
             // We shouldn't mutate imageNames directly as it's a prop, but for the UI to move on:
@@ -532,7 +547,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                 setSelectedLabelIndex(null);
                 setImageDimensions(null);
             } else {
-                showToast('No more images', 'success');
+                showToast(`No more ${projectType === 'NER' ? 'texts' : 'images'}`, 'success');
             }
             
             // Ideally, the parent component should remove the image from the array, 
@@ -540,7 +555,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
             // If the user goes back, it will 404, so we might want a callback.
             // But we don't have a callback prop for delete in useAnnotatorState right now.
         } catch (err) {
-            showToast('Failed to delete image', 'error');
+            showToast(`Failed to delete ${projectType === 'NER' ? 'text file' : 'image'}`, 'error');
         }
     };
 
@@ -552,7 +567,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
             setSelectedLabelIndex(null);
             setImageDimensions(null);
         } else {
-            showToast('Invalid image index', 'error');
+            showToast(`Invalid ${projectType === 'NER' ? 'text file' : 'image'} index`, 'error');
         }
     };
 
@@ -572,6 +587,11 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                     img_name: currentImageName,
                     labels: []
                 });
+            } else if (projectType === 'NER') {
+                await api.post(`/projects/${projectId}/labels/ner`, {
+                    file_name: currentImageName,
+                    labels: []
+                });
             }
             showToast('Saved as Background', 'success');
             setPrelabelStatus(null);
@@ -584,7 +604,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                 setCurrentIndex(currentIndex + 1);
                 setImageDimensions(null);
             } else {
-                 showToast('Reached end of images', 'success');
+                 showToast(`Reached end of ${projectType === 'NER' ? 'texts' : 'images'}`, 'success');
             }
         }
     };

@@ -128,10 +128,10 @@ export default function AnnotatorSetupPage() {
         const currentCount = Math.min(i + chunk.length, filesArray.length);
         setUploadProgress({ current: currentCount, total: filesArray.length });
       }
-      showToast(`Successfully added ${filesArray.length} images to project workspace`, 'success');
+      showToast(`Successfully added ${filesArray.length} ${projectInfo?.type === 'NER' ? 'texts' : 'images'} to project workspace`, 'success');
       loadWorkspaceData(projectId!);
     } catch (err: any) {
-      showToast('Failed to upload some images', 'error');
+      showToast(`Failed to upload some ${projectInfo?.type === 'NER' ? 'texts' : 'images'}`, 'error');
     } finally {
       setIsUploading(false);
       setUploadProgress(null);
@@ -234,10 +234,11 @@ export default function AnnotatorSetupPage() {
   };
 
   const handleClearWorkspace = async () => {
-    if (!confirm('Are you sure you want to clear all images from this project workspace? Labels will NOT be deleted.')) return;
+    const fileType = projectInfo?.type === 'NER' ? 'texts' : 'images';
+    if (!confirm(`Are you sure you want to clear all ${fileType} from this project workspace? Labels will NOT be deleted.`)) return;
     try {
       await api.delete(`/projects/${projectId}/images/local_workspace`);
-      showToast('Workspace images cleared', 'success');
+      showToast(`Workspace ${fileType} cleared`, 'success');
       loadWorkspaceData(projectId!);
     } catch {
       showToast('Failed to clear workspace', 'error');
@@ -333,7 +334,7 @@ export default function AnnotatorSetupPage() {
                 </svg>
               </div>
               <h4 className="text-lg font-bold mb-1">Unannotated</h4>
-              <p className="text-gray-500 text-sm mb-3">Continue labeling new images</p>
+              <p className="text-gray-500 text-sm mb-3">Continue labeling new {projectInfo?.type === 'NER' ? 'texts' : 'images'}</p>
               <span className="inline-block bg-blue-100 text-blue-800 text-xl font-bold px-4 py-1 rounded-full">
                 {unannotatedImages.length}
               </span>
@@ -373,7 +374,7 @@ export default function AnnotatorSetupPage() {
                 </svg>
               </div>
               <h4 className="text-lg font-bold mb-1">Skipped</h4>
-              <p className="text-gray-500 text-sm mb-3">Review intentionally skipped images</p>
+              <p className="text-gray-500 text-sm mb-3">Review intentionally skipped {projectInfo?.type === 'NER' ? 'texts' : 'images'}</p>
               <span className="inline-block bg-gray-200 text-gray-700 text-xl font-bold px-4 py-1 rounded-full">
                 {skippedImages.length}
               </span>
@@ -385,9 +386,9 @@ export default function AnnotatorSetupPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Add More Images */}
         <div className="bg-white border rounded shadow-md p-6">
-          <h3 className="text-base font-bold mb-1">Add Images to Workspace</h3>
+          <h3 className="text-base font-bold mb-1">{projectInfo?.type === 'NER' ? 'Add Texts to Workspace' : 'Add Images to Workspace'}</h3>
           <p className="text-sm text-gray-500 mb-4">
-            Upload images to expand your local workspace. They will be sorted automatically.
+            Upload {projectInfo?.type === 'NER' ? 'text files' : 'images'} to expand your local workspace. They will be sorted automatically.
           </p>
 
           <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded cursor-pointer bg-gray-50 hover:bg-gray-100 transition ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -396,15 +397,15 @@ export default function AnnotatorSetupPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
               <p className="text-sm text-gray-600">
-                <span className="font-bold text-black">Click to add images</span>
+                <span className="font-bold text-black">Click to add {projectInfo?.type === 'NER' ? 'text files' : 'images'}</span>
               </p>
             </div>
-            <input type="file" multiple accept="image/*" className="hidden" onChange={handleUploadImages} disabled={isUploading} />
+            <input type="file" multiple accept={projectInfo?.type === 'NER' ? '.txt' : 'image/*'} className="hidden" onChange={handleUploadImages} disabled={isUploading} />
           </label>
           {isUploading && (
             <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-2.5">
               <div className="flex justify-between text-xs font-semibold text-blue-800 mb-1">
-                <span>Uploading workspace images...</span>
+                <span>Uploading workspace {projectInfo?.type === 'NER' ? 'texts' : 'images'}...</span>
                 <span>
                   {uploadProgress ? `${uploadProgress.current.toLocaleString()} / ${uploadProgress.total.toLocaleString()}` : 'Processing...'}
                 </span>
