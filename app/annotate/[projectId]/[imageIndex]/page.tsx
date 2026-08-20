@@ -313,7 +313,7 @@ export default function AnnotatePage() {
       <div className="flex flex-1 overflow-hidden" style={{ cursor: isResizingSidebar ? 'col-resize' : 'default' }}>
 
         {/* Left Sidebar: Annotation Tools */}
-        {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'KIE') && (
+        {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'KIE' || projectType === 'NER') && (
           <div className={`relative shrink-0 bg-white border-r border-gray-200 flex flex-col h-full z-10 shadow-xs transition-all duration-200 ${isLeftSidebarOpen ? 'w-80' : 'w-0'}`}>
             <button
               onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
@@ -431,7 +431,7 @@ export default function AnnotatePage() {
             )}
 
             {/* Boxes Images Tools Section */}
-            {projectType !== 'KIE' && (
+            {projectType !== 'KIE' && projectType !== 'NER' && (
               <>
             {/* Boxes Images Tools Section */}
             <hr className="my-3 border-gray-200" />
@@ -570,176 +570,180 @@ export default function AnnotatePage() {
             )}
 
             {/* Pre-label Settings Section */}
-            <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
-              Pre-label Settings
-            </label>
-
-            {projectType === 'Yolo OBB' && (
-              <div className="mb-3">
-                <label className="flex items-center gap-2 cursor-pointer mb-2">
-                  <input
-                    type="checkbox"
-                    checked={prelabelRotationEnabled}
-                    onChange={(e) => setPrelabelRotationEnabled(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 font-medium">Apply angle offset</span>
+            {projectType !== 'NER' && (
+              <>
+                <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">
+                  Pre-label Settings
                 </label>
 
-                {prelabelRotationEnabled && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={prelabelRotationOffset}
-                      onChange={(e) => setPrelabelRotationOffset(Number(e.target.value) || 0)}
-                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-black focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                    <span className="text-sm text-gray-500 font-medium">deg</span>
+                {projectType === 'Yolo OBB' && (
+                  <div className="mb-3">
+                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                      <input
+                        type="checkbox"
+                        checked={prelabelRotationEnabled}
+                        onChange={(e) => setPrelabelRotationEnabled(e.target.checked)}
+                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 font-medium">Apply angle offset</span>
+                    </label>
+
+                    {prelabelRotationEnabled && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={prelabelRotationOffset}
+                          onChange={(e) => setPrelabelRotationOffset(Number(e.target.value) || 0)}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-black focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-500 font-medium">deg</span>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* Width Adjustment Control */}
-            <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={prelabelWidthAdjustEnabled}
-                  onChange={(e) => setPrelabelWidthAdjustEnabled(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                />
-                <span className="text-sm font-semibold text-gray-800">Adjust Pre-label Width</span>
-              </label>
+                {/* Width Adjustment Control */}
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={prelabelWidthAdjustEnabled}
+                      onChange={(e) => setPrelabelWidthAdjustEnabled(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm font-semibold text-gray-800">Adjust Pre-label Width</span>
+                  </label>
 
-              {prelabelWidthAdjustEnabled && (
-                <div className="mt-3 flex flex-col gap-3 pt-2 border-t border-gray-200 text-xs">
-                  {/* Action Selector (Reduce / Increase) */}
-                  <div>
-                    <label className="block text-gray-600 font-semibold mb-1">Action:</label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setPrelabelWidthAdjustAction('reduce')}
-                        className={`py-1 px-2 rounded font-medium text-center border transition-all ${
-                          prelabelWidthAdjustAction === 'reduce'
-                            ? 'bg-red-50 border-red-400 text-red-700 font-bold'
-                            : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'
-                        }`}
-                      >
-                        📉 Reduce
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPrelabelWidthAdjustAction('increase')}
-                        className={`py-1 px-2 rounded font-medium text-center border transition-all ${
-                          prelabelWidthAdjustAction === 'increase'
-                            ? 'bg-green-50 border-green-400 text-green-700 font-bold'
-                            : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'
-                        }`}
-                      >
-                        📈 Increase
-                      </button>
-                    </div>
-                  </div>
+                  {prelabelWidthAdjustEnabled && (
+                    <div className="mt-3 flex flex-col gap-3 pt-2 border-t border-gray-200 text-xs">
+                      {/* Action Selector (Reduce / Increase) */}
+                      <div>
+                        <label className="block text-gray-600 font-semibold mb-1">Action:</label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setPrelabelWidthAdjustAction('reduce')}
+                            className={`py-1 px-2 rounded font-medium text-center border transition-all ${
+                              prelabelWidthAdjustAction === 'reduce'
+                                ? 'bg-red-50 border-red-400 text-red-700 font-bold'
+                                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'
+                            }`}
+                          >
+                            📉 Reduce
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPrelabelWidthAdjustAction('increase')}
+                            className={`py-1 px-2 rounded font-medium text-center border transition-all ${
+                              prelabelWidthAdjustAction === 'increase'
+                                ? 'bg-green-50 border-green-400 text-green-700 font-bold'
+                                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'
+                            }`}
+                          >
+                            📈 Increase
+                          </button>
+                        </div>
+                      </div>
 
-                  {/* Percentage / Integer (Max 90) */}
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <label className="text-gray-600 font-semibold">Adjustment Amount:</label>
-                      <span className="font-bold text-blue-600">{prelabelWidthAdjustAmount}%</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={90}
-                        value={prelabelWidthAdjustAmount}
-                        onChange={(e) => {
-                          const val = Math.min(90, Math.max(1, Number(e.target.value) || 1));
-                          setPrelabelWidthAdjustAmount(val);
-                        }}
-                        className="w-20 border border-gray-300 rounded px-2 py-1 text-sm font-semibold text-black focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                      <span className="text-gray-500 text-[11px]">(1% - 90% max)</span>
-                    </div>
-                  </div>
+                      {/* Percentage / Integer (Max 90) */}
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-gray-600 font-semibold">Adjustment Amount:</label>
+                          <span className="font-bold text-blue-600">{prelabelWidthAdjustAmount}%</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={1}
+                            max={90}
+                            value={prelabelWidthAdjustAmount}
+                            onChange={(e) => {
+                              const val = Math.min(90, Math.max(1, Number(e.target.value) || 1));
+                              setPrelabelWidthAdjustAmount(val);
+                            }}
+                            className="w-20 border border-gray-300 rounded px-2 py-1 text-sm font-semibold text-black focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <span className="text-gray-500 text-[11px]">(1% - 90% max)</span>
+                        </div>
+                      </div>
 
-                  {/* Side selection (Both / Left / Right) */}
-                  <div>
-                    <label className="block text-gray-600 font-semibold mb-1">Apply Side:</label>
-                    <div className="grid grid-cols-3 gap-1">
-                      {(['both', 'left', 'right'] as const).map((side) => (
-                        <button
-                          key={side}
-                          type="button"
-                          onClick={() => setPrelabelWidthAdjustSide(side)}
-                          className={`py-1 px-1 capitalize rounded font-medium text-[11px] text-center border transition-all ${
-                            prelabelWidthAdjustSide === side
-                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                              : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'
-                          }`}
-                        >
-                          {side === 'both' ? '↔ Both' : side === 'left' ? '← Left' : 'Right →'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Target Classes Selection */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-gray-600 font-semibold">Target Classes:</label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (prelabelWidthAdjustClasses.length === classes.length) {
-                            setPrelabelWidthAdjustClasses([]);
-                          } else {
-                            setPrelabelWidthAdjustClasses(classes.map(c => c.code));
-                          }
-                        }}
-                        className="text-[10px] text-blue-600 hover:underline font-semibold"
-                      >
-                        {prelabelWidthAdjustClasses.length === classes.length ? 'Clear All' : 'Select All'}
-                      </button>
-                    </div>
-                    <div className="max-h-36 overflow-y-auto border border-gray-200 rounded bg-white p-1.5 space-y-1">
-                      {classes.length === 0 ? (
-                        <p className="text-[11px] text-gray-400 italic">No classes available</p>
-                      ) : (
-                        classes.map(cls => {
-                          const isChecked = prelabelWidthAdjustClasses.includes(cls.code);
-                          return (
-                            <label
-                              key={cls.code}
-                              className={`flex items-center gap-2 p-1 rounded cursor-pointer transition-colors ${
-                                isChecked ? 'bg-blue-50/80' : 'hover:bg-gray-50'
+                      {/* Side selection (Both / Left / Right) */}
+                      <div>
+                        <label className="block text-gray-600 font-semibold mb-1">Apply Side:</label>
+                        <div className="grid grid-cols-3 gap-1">
+                          {(['both', 'left', 'right'] as const).map((side) => (
+                            <button
+                              key={side}
+                              type="button"
+                              onClick={() => setPrelabelWidthAdjustSide(side)}
+                              className={`py-1 px-1 capitalize rounded font-medium text-[11px] text-center border transition-all ${
+                                prelabelWidthAdjustSide === side
+                                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'
                               }`}
                             >
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setPrelabelWidthAdjustClasses(prev => [...prev, cls.code]);
-                                  } else {
-                                    setPrelabelWidthAdjustClasses(prev => prev.filter(c => c !== cls.code));
-                                  }
-                                }}
-                                className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300"
-                              />
-                              <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0" style={{ backgroundColor: cls.color || '#3b82f6' }} />
-                              <span className="truncate text-[11px] font-medium text-gray-800">{cls.name || `Class ${cls.code}`}</span>
-                            </label>
-                          );
-                        })
-                      )}
+                              {side === 'both' ? '↔ Both' : side === 'left' ? '← Left' : 'Right →'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Target Classes Selection */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-gray-600 font-semibold">Target Classes:</label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (prelabelWidthAdjustClasses.length === classes.length) {
+                                setPrelabelWidthAdjustClasses([]);
+                              } else {
+                                setPrelabelWidthAdjustClasses(classes.map(c => c.code));
+                              }
+                            }}
+                            className="text-[10px] text-blue-600 hover:underline font-semibold"
+                          >
+                            {prelabelWidthAdjustClasses.length === classes.length ? 'Clear All' : 'Select All'}
+                          </button>
+                        </div>
+                        <div className="max-h-36 overflow-y-auto border border-gray-200 rounded bg-white p-1.5 space-y-1">
+                          {classes.length === 0 ? (
+                            <p className="text-[11px] text-gray-400 italic">No classes available</p>
+                          ) : (
+                            classes.map(cls => {
+                              const isChecked = prelabelWidthAdjustClasses.includes(cls.code);
+                              return (
+                                <label
+                                  key={cls.code}
+                                  className={`flex items-center gap-2 p-1 rounded cursor-pointer transition-colors ${
+                                    isChecked ? 'bg-blue-50/80' : 'hover:bg-gray-50'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setPrelabelWidthAdjustClasses(prev => [...prev, cls.code]);
+                                      } else {
+                                        setPrelabelWidthAdjustClasses(prev => prev.filter(c => c !== cls.code));
+                                      }
+                                    }}
+                                    className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300"
+                                  />
+                                  <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0" style={{ backgroundColor: cls.color || '#3b82f6' }} />
+                                  <span className="truncate text-[11px] font-medium text-gray-800">{cls.name || `Class ${cls.code}`}</span>
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
             </div>
           </div>
         )}
@@ -786,6 +790,7 @@ export default function AnnotatePage() {
                 classes={classes}
                 selectedLabelIndex={selectedLabelIndex}
                 setSelectedLabelIndex={setSelectedLabelIndex}
+                setActiveClassCode={setActiveClassCode}
                 onAnnotationAdded={handleAnnotationAdded}
               />
             ) : (

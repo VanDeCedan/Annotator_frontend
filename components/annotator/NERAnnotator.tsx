@@ -9,6 +9,7 @@ interface NERAnnotatorProps {
   classes: any[];
   selectedLabelIndex: number | null;
   setSelectedLabelIndex: (index: number | null) => void;
+  setActiveClassCode?: (code: number) => void;
   onAnnotationAdded?: () => void;
 }
 
@@ -20,6 +21,7 @@ export function NERAnnotator({
   classes,
   selectedLabelIndex,
   setSelectedLabelIndex,
+  setActiveClassCode,
   onAnnotationAdded,
 }: NERAnnotatorProps) {
   const [text, setText] = useState<string>('');
@@ -28,7 +30,37 @@ export function NERAnnotator({
   const { showToast } = useAppStore();
 
   const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, labelIndex: number | null }>({ visible: false, x: 0, y: 0, labelIndex: null });
+  const [additionalSelected, setAdditionalSelected] = useState<Set<number>>(new Set());
 
+  const mergeSelected = () => {
+    if (selectedLabelIndex === null) return;
+    const allSelected = [selectedLabelIndex, ...Array.from(additionalSelected)];
+    if (allSelected.length < 2) return;
+    
+    let minStart = Infinity;
+    let maxEnd = -Infinity;
+    
+    allSelected.forEach(idx => {
+      const lbl = labels[idx];
+      if (lbl.start_char < minStart) minStart = lbl.start_char;
+      if (lbl.end_char > maxEnd) maxEnd = lbl.end_char;
+    });
+    
+    const mainClass = labels[selectedLabelIndex].class_code;
+    
+    const newLabels = labels.filter((_, idx) => !allSelected.includes(idx));
+    const mergedLabel = {
+      class_code: mainClass,
+      start_char: minStart,
+      end_char: maxEnd,
+      text_value: text.slice(minStart, maxEnd)
+    };
+    newLabels.push(mergedLabel);
+    
+    onLabelsChange(newLabels);
+    setSelectedLabelIndex(newLabels.length - 1);
+    setAdditionalSelected(new Set());
+  };
   useEffect(() => {
     const fetchText = async () => {
       setIsLoading(true);
@@ -155,26 +187,24 @@ export function NERAnnotator({
           adjustBoundary(selectedLabelIndex, 'start', 1);
         } else if (e.key === 'Backspace' || e.key === 'Delete') {
           e.preventDefault();
-          const newLabels = [...labels];
-          newLabels.splice(selectedLabelIndex, 1);
+          
+          // Delete all selected
+          const toDelete = new Set([selectedLabelIndex, ...Array.from(additionalSelected)]);
+          const newLabels = labels.filter((_, idx) => !toDelete.has(idx));
           onLabelsChange(newLabels);
           setSelectedLabelIndex(null);
+          setAdditionalSelected(new Set());
+        } else if (e.code === 'Space') {
+          e.preventDefault();
+          if (additionalSelected.size > 0) {
+            mergeSelected();
+          }
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedLabelIndex, labels, text]);
-
-  const removeLabel = (index: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const newLabels = [...labels];
-    newLabels.splice(index, 1);
-    onLabelsChange(newLabels);
-    if (selectedLabelIndex === index) {
-      setSelectedLabelIndex(null);
-    }
-  };
+  }, [selectedLabelIndex, labels, text, additionalSelected]);
 
   // Render text with highlights
   const renderText = () => {
@@ -197,7 +227,8 @@ export function NERAnnotator({
       const cls = classes.find(c => c.code === lbl.class_code);
       const color = cls ? cls.color : '#ff0000';
       
-      const isSelected = selectedLabelIndex === originalIndex;
+      const isSelected = selectedLabelIndex === originalIndex || additionalSelected.has(originalIndex);
+      const isPrimary = selectedLabelIndex === originalIndex;
       
       nodes.push(
         <mark
@@ -207,12 +238,43 @@ export function NERAnnotator({
             padding: '2px 0',
             borderRadius: '2px',
             cursor: 'pointer',
-            border: isSelected ? '2px solid black' : 'none'
+            border: isPrimary ? '2px solid black' : isSelected ? '2px dashed black' : 'none'
           }}
-          onClick={(e) => { e.stopPropagation(); setSelectedLabelIndex(originalIndex); }}
+          onClick={(e) => { 
+            e.stopPropagation(); 
+            if (setActiveClassCode) {
+              setActiveClassCode(lbl.class_code);
+            }
+            if (e.ctrlKey || e.metaKey) {
+              if (selectedLabelIndex === null) {
+                setSelectedLabelIndex(originalIndex);
+              } else if (selectedLabelIndex === originalIndex) {
+                if (additionalSelected.size > 0) {
+                  const next = Array.from(additionalSelected)[0];
+                  const newSet = new Set(additionalSelected);
+                  newSet.delete(next);
+                  setSelectedLabelIndex(next);
+                  setAdditionalSelected(newSet);
+                } else {
+                  setSelectedLabelIndex(null);
+                }
+              } else {
+                const newSet = new Set(additionalSelected);
+                if (newSet.has(originalIndex)) newSet.delete(originalIndex);
+                else newSet.add(originalIndex);
+                setAdditionalSelected(newSet);
+              }
+            } else {
+              setSelectedLabelIndex(originalIndex); 
+              setAdditionalSelected(new Set());
+            }
+          }}
           onContextMenu={(e) => {
             e.preventDefault();
-            setSelectedLabelIndex(originalIndex);
+            if (selectedLabelIndex !== originalIndex && !additionalSelected.has(originalIndex)) {
+              setSelectedLabelIndex(originalIndex);
+              setAdditionalSelected(new Set());
+            }
             setContextMenu({
               visible: true,
               x: e.clientX,
@@ -222,17 +284,6 @@ export function NERAnnotator({
           }}
         >
           {text.slice(Math.max(currentPos, lbl.start_char), lbl.end_char)}
-          {isSelected && (
-            <span className="inline-flex gap-0.5 ml-1 align-middle" onClick={e => e.stopPropagation()}>
-              <button 
-                onClick={(e) => removeLabel(originalIndex, e)}
-                className="text-red-700 bg-white rounded-full w-4 h-4 inline-flex items-center justify-center text-xs border border-red-700 hover:bg-red-100 leading-none"
-                title="Delete"
-              >
-                ×
-              </button>
-            </span>
-          )}
         </mark>
       );
       
@@ -254,6 +305,7 @@ export function NERAnnotator({
     <div className="flex-1 overflow-auto bg-white p-8 relative" onClick={() => {
       if (!isSelectingRef.current) {
         setSelectedLabelIndex(null);
+        setAdditionalSelected(new Set());
       }
     }}>
       <div 
@@ -279,11 +331,23 @@ export function NERAnnotator({
                 key={cls.code}
                 className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 flex items-center gap-2 text-black"
                 onClick={() => {
+                  if (setActiveClassCode) {
+                    setActiveClassCode(cls.code);
+                  }
                   const newLabels = [...labels];
-                  newLabels[contextMenu.labelIndex as number] = {
-                    ...newLabels[contextMenu.labelIndex as number],
-                    class_code: cls.code
-                  };
+                  const toChange = new Set([selectedLabelIndex, ...Array.from(additionalSelected)]);
+                  if (toChange.has(contextMenu.labelIndex)) {
+                    toChange.forEach(idx => {
+                      if (idx !== null) {
+                        newLabels[idx] = { ...newLabels[idx], class_code: cls.code };
+                      }
+                    });
+                  } else {
+                    newLabels[contextMenu.labelIndex as number] = {
+                      ...newLabels[contextMenu.labelIndex as number],
+                      class_code: cls.code
+                    };
+                  }
                   onLabelsChange(newLabels);
                   setContextMenu({ ...contextMenu, visible: false });
                 }}
@@ -293,6 +357,19 @@ export function NERAnnotator({
               </button>
             ))}
           </div>
+          {additionalSelected.size > 0 && (
+            <div className="border-t border-gray-100 mt-1 pt-1">
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 text-black font-medium"
+                onClick={() => {
+                  mergeSelected();
+                  setContextMenu({ ...contextMenu, visible: false });
+                }}
+              >
+                Merge Selected
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
