@@ -15,7 +15,7 @@ export default function AnnotatorSetupPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   
   const [projectInfo, setProjectInfo] = useState<any>(null);
-  const [stats, setStats] = useState({ labeled: 0 });
+  const [stats, setStats] = useState({ labeled: 0, bg_count: 0 });
   const [annotatedImages, setAnnotatedImages] = useState<string[]>([]);
   const [unannotatedImages, setUnannotatedImages] = useState<string[]>([]);
   const [skippedImages, setSkippedImages] = useState<string[]>([]);
@@ -53,7 +53,10 @@ export default function AnnotatorSetupPage() {
       const labeledImages: string[] = progressRes.data.labeled_images || [];
       const skipped_images: string[] = progressRes.data.skipped_images || [];
       
-      setStats({ labeled: progressRes.data.labeled_count });
+      setStats({ 
+        labeled: progressRes.data.labeled_count, 
+        bg_count: progressRes.data.bg_count || 0 
+      });
 
       const annotated = allImages.filter(img => labeledImages.includes(img));
       const skipped = allImages.filter(img => skipped_images.includes(img));
@@ -286,6 +289,11 @@ export default function AnnotatorSetupPage() {
               <span className="text-sm text-gray-600">
                 Total Labeled: <strong className="text-black">{stats.labeled}</strong>
               </span>
+              {(projectInfo.type === 'Yolo' || projectInfo.type === 'Yolo OBB') && stats.bg_count > 0 && (
+                <span className="text-sm text-gray-600 border-l border-gray-300 pl-3">
+                  Background: <strong className="text-green-600">{stats.bg_count}</strong>
+                </span>
+              )}
             </div>
           </div>
           {user?.role === 'admin' && (
@@ -358,6 +366,14 @@ export default function AnnotatorSetupPage() {
               <span className="inline-block bg-green-100 text-green-800 text-xl font-bold px-4 py-1 rounded-full">
                 {annotatedImages.length}
               </span>
+              {(projectInfo?.type === 'Yolo' || projectInfo?.type === 'Yolo OBB') && stats.bg_count > 0 && (
+                <div className="mt-3 text-xs font-semibold text-green-800 bg-green-200 px-3 py-1 rounded-full flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  {stats.bg_count} Background Images
+                </div>
+              )}
             </div>
 
             <div 

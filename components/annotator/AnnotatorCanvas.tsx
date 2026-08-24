@@ -17,8 +17,8 @@ interface AnnotatorCanvasProps {
     onLabelsChange: (labels: Label[]) => void;
     activeClassCode: number | null;
     classes: {code: number, color: string}[];
-    selectedLabelIndex?: number | null;
-    setSelectedLabelIndex?: (index: number | null) => void;
+    selectedLabelIndices?: number[];
+    setSelectedLabelIndices?: (indices: number[]) => void;
     rotationStep?: number;
     autoAdaptBox?: boolean;
     doubleClickRotationEnabled?: boolean;
@@ -91,8 +91,8 @@ export function AnnotatorCanvas({
     onLabelsChange,
     activeClassCode,
     classes,
-    selectedLabelIndex = null,
-    setSelectedLabelIndex,
+    selectedLabelIndices = [],
+    setSelectedLabelIndices,
     rotationStep = 5,
     autoAdaptBox = true,
     doubleClickRotationEnabled = false,
@@ -167,26 +167,91 @@ export function AnnotatorCanvas({
 
             if (e.key === 'Escape') {
                 resetZoom();
-                if (setSelectedLabelIndex) setSelectedLabelIndex(null);
+                if (setSelectedLabelIndices) setSelectedLabelIndices([]);
                 setMode('idle');
                 if (setZoomToAreaEnabled) setZoomToAreaEnabled(false);
                 return;
             }
 
-            if (selectedLabelIndex === null) return;
+            if (selectedLabelIndices.length === 0) return;
             
             if (e.key === 'Delete' || e.key === 'Backspace') {
-                const newLabels = [...labels];
-                newLabels.splice(selectedLabelIndex, 1);
+                const newLabels = labels.filter((_, idx) => !selectedLabelIndices.includes(idx));
                 onLabelsChange(newLabels);
-                if (setSelectedLabelIndex) setSelectedLabelIndex(null);
+                if (setSelectedLabelIndices) setSelectedLabelIndices([]);
             }
-            else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && projectType === 'Yolo OBB') {
+            else if (e.key === ' ' && selectedLabelIndices.length > 1) {
+                // Merge logic
+                e.preventDefault();
+                if (!image) return;
+
+                let minX = Infinity;
+                let minY = Infinity;
+                let maxX = -Infinity;
+                let maxY = -Infinity;
+
+                // compute bounding box for all selected labels
+                selectedLabelIndices.forEach(idx => {
+                    const lbl = labels[idx];
+                    const coords = lbl.coordinates.split(' ').map(Number);
+                    if (coords.length === 8) {
+                        for (let i = 0; i < 8; i += 2) {
+                            const x = coords[i];
+                            const y = coords[i+1];
+                            if (x < minX) minX = x;
+                            if (x > maxX) maxX = x;
+                            if (y < minY) minY = y;
+                            if (y > maxY) maxY = y;
+                        }
+                    } else if (coords.length === 4) {
+                        const [cx, cy, w, h] = coords;
+                        const x1 = cx - w/2;
+                        const y1 = cy - h/2;
+                        const x2 = cx + w/2;
+                        const y2 = cy + h/2;
+                        if (x1 < minX) minX = x1;
+                        if (x2 > maxX) maxX = x2;
+                        if (y1 < minY) minY = y1;
+                        if (y2 > maxY) maxY = y2;
+                    }
+                });
+
+                if (minX !== Infinity) {
+                    const w = maxX - minX;
+                    const h = maxY - minY;
+                    const cx = minX + w/2;
+                    const cy = minY + h/2;
+
+                    let coordsStr = '';
+                    if (projectType === 'Yolo OBB') {
+                        // Axis aligned OBB
+                        const corners = [
+                            { x: cx - w/2, y: cy - h/2 },
+                            { x: cx + w/2, y: cy - h/2 },
+                            { x: cx + w/2, y: cy + h/2 },
+                            { x: cx - w/2, y: cy + h/2 }
+                        ];
+                        coordsStr = corners.map(pt => `${pt.x} ${pt.y}`).join(' ');
+                    } else {
+                        coordsStr = `${cx} ${cy} ${w} ${h}`;
+                    }
+
+                    // Remove merged boxes and append the new one
+                    const remainingLabels = labels.filter((_, idx) => !selectedLabelIndices.includes(idx));
+                    // Keep the class_code of the first selected label
+                    const targetClass = labels[selectedLabelIndices[0]].class_code;
+                    const newLabels = [...remainingLabels, { class_code: targetClass, coordinates: coordsStr }];
+                    
+                    onLabelsChange(newLabels);
+                    if (setSelectedLabelIndices) setSelectedLabelIndices([newLabels.length - 1]);
+                }
+            }
+            else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && projectType === 'Yolo OBB' && selectedLabelIndices.length === 1) {
                 e.preventDefault();
                 if (!image) return;
                 
                 const newLabels = [...labels];
-                const lbl = newLabels[selectedLabelIndex];
+                const lbl = newLabels[selectedLabelIndices[0]];
                 const coords = lbl.coordinates.split(' ').map(Number);
                 
                 if (coords.length === 8) {
@@ -198,7 +263,6 @@ export function AnnotatorCanvas({
                         let newW = parsed.w;
                         let newH = parsed.h;
                         
-                        // Auto-adapt box size for 90-degree increments
                         if (autoAdaptBox && rotationStep % 90 === 0 && (Math.abs(rotationStep) / 90) % 2 === 1) {
                             newW = parsed.h;
                             newH = parsed.w;
@@ -215,7 +279,7 @@ export function AnnotatorCanvas({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedLabelIndex, labels, onLabelsChange, setSelectedLabelIndex, projectType, image, rotationStep, autoAdaptBox, resetZoom, setZoomToAreaEnabled]);
+    }, [selectedLabelIndices, labels, onLabelsChange, setSelectedLabelIndices, projectType, image, rotationStep, autoAdaptBox, resetZoom, setZoomToAreaEnabled]);
 
     useEffect(() => {
         const img = new Image();
@@ -274,7 +338,7 @@ export function AnnotatorCanvas({
 
         // Draw Labels
         labels.forEach((lbl, idx) => {
-            const isSelected = idx === selectedLabelIndex;
+            const isSelected = selectedLabelIndices.includes(idx);
             const cls = classes.find(c => c.code === lbl.class_code);
             const color = cls ? cls.color : '#ff0000';
             
@@ -330,7 +394,7 @@ export function AnnotatorCanvas({
                 ctx.restore();
 
                 // Draw resize handles for selected OBB
-                if (isSelected) {
+                if (isSelected && selectedLabelIndices.length === 1) {
                     ctx.setLineDash([]);
                     const handleSize = 6 / scale;
                     ctx.fillStyle = '#ffffff';
@@ -373,7 +437,7 @@ export function AnnotatorCanvas({
                 ctx.stroke();
 
                 // Draw handles for selected YOLO
-                if (isSelected) {
+                if (isSelected && selectedLabelIndices.length === 1) {
                     ctx.setLineDash([]);
                     ctx.fillStyle = '#ffffff';
                     ctx.strokeStyle = color;
@@ -431,7 +495,7 @@ export function AnnotatorCanvas({
         }
 
         ctx.restore();
-    }, [image, scale, offset, labels, currentPoints, classes, projectType, selectedLabelIndex, activeClassCode, mode]);
+    }, [image, scale, offset, labels, currentPoints, classes, projectType, selectedLabelIndices, activeClassCode, mode]);
 
     useEffect(() => {
         draw();
@@ -490,15 +554,15 @@ export function AnnotatorCanvas({
         const pos = getMousePos(e);
 
         if (zoomToAreaEnabled) {
-            if (setSelectedLabelIndex) setSelectedLabelIndex(null);
+            if (setSelectedLabelIndices) setSelectedLabelIndices([]);
             setMode('drawing_zoom');
             setCurrentPoints([pos, pos]);
             return;
         }
 
         // 1. Check if clicking on an active selection's handles
-        if (selectedLabelIndex !== null) {
-            const lbl = labels[selectedLabelIndex];
+        if (selectedLabelIndices.length === 1) {
+            const lbl = labels[selectedLabelIndices[0]];
             const coords = lbl.coordinates.split(' ').map(Number);
             const r = 8 / scale; // Hit radius
 
@@ -595,19 +659,37 @@ export function AnnotatorCanvas({
         }
 
         if (clickedIndex !== null) {
-            if (setSelectedLabelIndex) setSelectedLabelIndex(clickedIndex);
-            setMode('dragging_box');
-            setDragOffset(clickedDragOffset);
+            if (e.ctrlKey || e.metaKey) {
+                if (setSelectedLabelIndices) {
+                    if (selectedLabelIndices.includes(clickedIndex)) {
+                        setSelectedLabelIndices(selectedLabelIndices.filter(i => i !== clickedIndex));
+                    } else {
+                        setSelectedLabelIndices([...selectedLabelIndices, clickedIndex]);
+                    }
+                }
+                return;
+            }
+
+            if (setSelectedLabelIndices) {
+                if (!selectedLabelIndices.includes(clickedIndex)) {
+                    setSelectedLabelIndices([clickedIndex]);
+                }
+            }
+            
+            if (selectedLabelIndices.length <= 1 || !selectedLabelIndices.includes(clickedIndex)) {
+                setMode('dragging_box');
+                setDragOffset(clickedDragOffset);
+            }
             return;
         }
 
         // 3. Start drawing
         if (activeClassCode === null && projectType !== 'Classification' && projectType !== 'Ocr') {
-            if (setSelectedLabelIndex) setSelectedLabelIndex(null);
+            if (setSelectedLabelIndices) setSelectedLabelIndices([]);
             return;
         }
 
-        if (setSelectedLabelIndex) setSelectedLabelIndex(null);
+        if (setSelectedLabelIndices) setSelectedLabelIndices([]);
         
         if (projectType === 'Yolo OBB') {
             setMode('drawing_obb');
@@ -630,9 +712,9 @@ export function AnnotatorCanvas({
         if (mode === 'drawing_yolo' || mode === 'drawing_obb' || mode === 'drawing_zoom') {
             setCurrentPoints([currentPoints[0], pos]);
         } 
-        else if (mode === 'dragging_box' && selectedLabelIndex !== null) {
+        else if (mode === 'dragging_box' && selectedLabelIndices.length === 1) {
             const newLabels = [...labels];
-            const lbl = newLabels[selectedLabelIndex];
+            const lbl = newLabels[selectedLabelIndices[0]];
             const coords = lbl.coordinates.split(' ').map(Number);
             
             if ((projectType === 'Yolo' || projectType === 'KIE')) {
@@ -651,9 +733,9 @@ export function AnnotatorCanvas({
             }
             onLabelsChange(newLabels);
         }
-        else if (mode === 'rotating_obb' && selectedLabelIndex !== null && originalBox) {
+        else if (mode === 'rotating_obb' && selectedLabelIndices.length === 1 && originalBox) {
             const newLabels = [...labels];
-            const lbl = newLabels[selectedLabelIndex];
+            const lbl = newLabels[selectedLabelIndices[0]];
             
             const angle = Math.atan2(pos.y - originalBox.cy, pos.x - originalBox.cx);
             const nbox = { ...originalBox, angle: angle + Math.PI / 2 };
@@ -662,9 +744,9 @@ export function AnnotatorCanvas({
             lbl.coordinates = norm.join(' ');
             onLabelsChange(newLabels);
         }
-        else if (mode === 'resizing_obb' && selectedLabelIndex !== null && originalBox) {
+        else if (mode === 'resizing_obb' && selectedLabelIndices.length === 1 && originalBox) {
             const newLabels = [...labels];
-            const lbl = newLabels[selectedLabelIndex];
+            const lbl = newLabels[selectedLabelIndices[0]];
             
             const dx = pos.x - originalBox.cx;
             const dy = pos.y - originalBox.cy;
@@ -700,9 +782,9 @@ export function AnnotatorCanvas({
             lbl.coordinates = norm.join(' ');
             onLabelsChange(newLabels);
         }
-        else if (mode === 'resizing_yolo' && selectedLabelIndex !== null && originalBox) {
+        else if (mode === 'resizing_yolo' && selectedLabelIndices.length === 1 && originalBox) {
             const newLabels = [...labels];
-            const lbl = newLabels[selectedLabelIndex];
+            const lbl = newLabels[selectedLabelIndices[0]];
             
             const {cx, cy, w, h} = originalBox;
             let x1 = (cx - w/2) * image.width;
@@ -806,7 +888,7 @@ export function AnnotatorCanvas({
                 
                 const newLbls = [...labels, { class_code: activeClassCode!, coordinates: coords }];
                 onLabelsChange(newLbls);
-                if (setSelectedLabelIndex) setSelectedLabelIndex(newLbls.length - 1);
+                if (setSelectedLabelIndices) setSelectedLabelIndices([newLbls.length - 1]);
                 if (onAnnotationAdded) onAnnotationAdded();
             }
             setCurrentPoints([]);
@@ -824,11 +906,10 @@ export function AnnotatorCanvas({
             setMode('idle');
         } else {
              // Quick delete selected or last if nothing selected
-             if (selectedLabelIndex !== null) {
-                 const newLabels = [...labels];
-                 newLabels.splice(selectedLabelIndex, 1);
+             if (selectedLabelIndices.length > 0) {
+                 const newLabels = labels.filter((_, idx) => !selectedLabelIndices.includes(idx));
                  onLabelsChange(newLabels);
-                 if (setSelectedLabelIndex) setSelectedLabelIndex(null);
+                 if (setSelectedLabelIndices) setSelectedLabelIndices([]);
              } else if (labels.length > 0 && !isPanning) {
                  onLabelsChange(labels.slice(0, -1));
              }
@@ -1018,8 +1099,11 @@ export function AnnotatorCanvas({
                 ) : (
                     <p>Select: Click Box | Draw: Drag Box | <span className="text-yellow-300 font-semibold">Double-Click: Zoom Area</span></p>
                 )}
-                {projectType === 'Yolo OBB' && selectedLabelIndex !== null && (
+                {projectType === 'Yolo OBB' && selectedLabelIndices?.length === 1 && (
                     <p className="text-yellow-300 font-bold">Drag top handle to rotate</p>
+                )}
+                {selectedLabelIndices?.length > 1 && (
+                    <p className="text-yellow-300 font-bold">Press SPACE to merge selected boxes</p>
                 )}
                 <p>Delete: Select & Del / Right Click | Pan: Middle Click / Shift / Hand Tool</p>
             </div>

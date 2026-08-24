@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 interface Class {
   id: number;
@@ -12,11 +12,19 @@ interface ClassPanelProps {
   activeClassCode: number | null;
   onSelectClass: (code: number) => void;
   projectType: string;
-  selectedLabelIndex?: number | null;
+  selectedLabelIndices?: number[];
   labels?: { class_code: number }[];
 }
 
-export function ClassPanel({ classes, activeClassCode, onSelectClass, projectType, selectedLabelIndex, labels = [] }: ClassPanelProps) {
+export function ClassPanel({ classes, activeClassCode, onSelectClass, projectType, selectedLabelIndices = [], labels = [] }: ClassPanelProps) {
+  const classCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    labels.forEach(l => {
+      counts[l.class_code] = (counts[l.class_code] || 0) + 1;
+    });
+    return counts;
+  }, [labels]);
+
   return (
     <div className="w-full bg-white flex flex-col min-h-0">
       {/* Header */}
@@ -25,8 +33,8 @@ export function ClassPanel({ classes, activeClassCode, onSelectClass, projectTyp
         <p className="text-xs text-gray-500 mt-0.5">
           {(projectType === 'Classification' || projectType === 'Ocr') 
             ? 'Select to assign class' 
-            : selectedLabelIndex !== null && selectedLabelIndex !== undefined 
-              ? 'Change class of selected item' 
+            : selectedLabelIndices.length > 0 
+              ? `Change class for ${selectedLabelIndices.length} selected item(s)` 
               : projectType === 'NER' ? 'Select then highlight text' : 'Select then draw on image'}
         </p>
       </div>

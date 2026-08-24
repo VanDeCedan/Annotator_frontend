@@ -74,6 +74,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
     const [grain, setGrain] = useState(false);
     const [noise, setNoise] = useState(false);
     const [blur, setBlur] = useState(false);
+    const [maxRotation, setMaxRotation] = useState(0);
     const [includeAugInVal, setIncludeAugInVal] = useState(false);
     
     // OCR Specific Augmentations
@@ -126,6 +127,7 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                     grain,
                     noise,
                     blur,
+                    max_rotation: maxRotation,
                     ocr_distortion_intensity: ocrDistortionIntensity,
                     ocr_noise_intensity: ocrNoiseIntensity,
                     ocr_blur_intensity: ocrBlurIntensity,
@@ -442,6 +444,27 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                                                 <div className="text-sm text-gray-500 mt-0.5">Slightly blur the image</div>
                                             </div>
                                         </label>
+                                        <div className="flex items-start gap-3">
+                                            <div className="mt-0.5 w-4 h-4 flex items-center justify-center">
+                                                <span className="text-gray-400">⟳</span>
+                                            </div>
+                                            <div className="-mt-0.5 flex-1">
+                                                <div className="text-sm font-semibold text-gray-900">Random Rotation</div>
+                                                <div className="text-sm text-gray-500 mt-0.5 mb-2">Rotate images randomly between -max and +max degrees</div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm text-gray-600">Max angle:</span>
+                                                    <input 
+                                                        type="number" 
+                                                        min="0" 
+                                                        max="180" 
+                                                        value={maxRotation}
+                                                        onChange={e => setMaxRotation(parseInt(e.target.value) || 0)}
+                                                        className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                                    />
+                                                    <span className="text-sm text-gray-600">degrees</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                                 

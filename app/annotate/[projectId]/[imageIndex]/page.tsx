@@ -66,8 +66,8 @@ export default function AnnotatePage() {
     setActiveClassCode,
     labels,
     setLabels,
-    selectedLabelIndex,
-    setSelectedLabelIndex,
+    selectedLabelIndices,
+    setSelectedLabelIndices,
     ocrValue,
     setOcrValue,
     deskewAngle,
@@ -121,6 +121,8 @@ export default function AnnotatePage() {
     setAutoPredictEnabled,
     ocrConf,
     setOcrConf,
+    iouThresh,
+    setIouThresh,
   } = useAnnotatorState(projectId, imageNames, initialIndex, prefixEnabled, prefixValue);
 
   const [imageUrl, setImageUrl] = useState('');
@@ -402,7 +404,7 @@ export default function AnnotatePage() {
                   </div>
                   
                   <div className="mb-3 space-y-2">
-                    <div className="flex flex-col">
+                    <div className="flex flex-col mb-2">
                       <div className="flex justify-between">
                         <label className="text-[10px] font-semibold text-indigo-800">Min Conf: {ocrConf}</label>
                       </div>
@@ -416,11 +418,25 @@ export default function AnnotatePage() {
                         className="w-full h-1.5 bg-indigo-200 rounded-lg appearance-none cursor-pointer" 
                       />
                     </div>
+                    <div className="flex flex-col">
+                      <div className="flex justify-between">
+                        <label className="text-[10px] font-semibold text-indigo-800">IOU: {iouThresh}</label>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.05" 
+                        max="1.0" 
+                        step="0.05" 
+                        value={iouThresh} 
+                        onChange={(e) => setIouThresh(parseFloat(e.target.value))} 
+                        className="w-full h-1.5 bg-indigo-200 rounded-lg appearance-none cursor-pointer" 
+                      />
+                    </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => runLivePrediction(ocrConf)}
+                    onClick={() => runLivePrediction(ocrConf, iouThresh)}
                     disabled={isAiLoading}
                     className="w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 border bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-sm cursor-pointer disabled:opacity-50"
                   >
@@ -788,8 +804,8 @@ export default function AnnotatePage() {
                 onLabelsChange={setLabels}
                 activeClassCode={activeClassCode}
                 classes={classes}
-                selectedLabelIndex={selectedLabelIndex}
-                setSelectedLabelIndex={setSelectedLabelIndex}
+                selectedLabelIndices={selectedLabelIndices}
+                setSelectedLabelIndices={setSelectedLabelIndices}
                 setActiveClassCode={setActiveClassCode}
                 onAnnotationAdded={handleAnnotationAdded}
               />
@@ -802,8 +818,8 @@ export default function AnnotatePage() {
                 onLabelsChange={setLabels}
                 activeClassCode={activeClassCode}
                 classes={classes}
-                selectedLabelIndex={selectedLabelIndex}
-                setSelectedLabelIndex={setSelectedLabelIndex}
+                selectedLabelIndices={selectedLabelIndices}
+                setSelectedLabelIndices={setSelectedLabelIndices}
                 rotationStep={rotationStep}
                 autoAdaptBox={autoAdaptBox}
                 doubleClickRotationEnabled={doubleClickRotationEnabled}
@@ -829,7 +845,7 @@ export default function AnnotatePage() {
               onClick={() => {
                 if(window.confirm('Are you sure you want to delete all labels on this image?')) {
                   setLabels([]);
-                  if (setSelectedLabelIndex) setSelectedLabelIndex(null);
+                  if (setSelectedLabelIndices) setSelectedLabelIndices([]);
                 }
               }}
               className="px-2 py-1 bg-red-50 text-red-600 rounded border border-red-200 hover:bg-red-100 text-xs font-medium"
@@ -973,16 +989,18 @@ export default function AnnotatePage() {
               onSelectClass={(code) => {
                 setActiveClassCode(code);
                 // If a box is selected, change its class!
-                if (selectedLabelIndex !== null) {
+                if (selectedLabelIndices.length > 0) {
                   setLabels(prev => {
                     const newLabels = [...prev];
-                    newLabels[selectedLabelIndex] = { ...newLabels[selectedLabelIndex], class_code: code };
+                    selectedLabelIndices.forEach(idx => {
+                      newLabels[idx] = { ...newLabels[idx], class_code: code };
+                    });
                     return newLabels;
                   });
                 }
               }}
               projectType={projectType}
-              selectedLabelIndex={selectedLabelIndex}
+              selectedLabelIndices={selectedLabelIndices}
               labels={labels}
             />
           )}

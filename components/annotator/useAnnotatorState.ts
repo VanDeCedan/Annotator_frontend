@@ -25,6 +25,10 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
     const ocrConfRef = useRef(ocrConf);
     useEffect(() => { ocrConfRef.current = ocrConf; }, [ocrConf]);
     
+    const [iouThresh, setIouThresh] = useState(0.45);
+    const iouThreshRef = useRef(iouThresh);
+    useEffect(() => { iouThreshRef.current = iouThresh; }, [iouThresh]);
+    
     // Pre-label rotation state
     const [prelabelRotationEnabled, setPrelabelRotationEnabled] = useState(false);
     const [prelabelRotationOffset, setPrelabelRotationOffset] = useState(90);
@@ -485,14 +489,14 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         }
     };
 
-    const [selectedLabelIndex, setSelectedLabelIndex] = useState<number | null>(null);
+    const [selectedLabelIndices, setSelectedLabelIndices] = useState<number[]>([]);
 
     const nextImage = async () => {
         const saved = await saveCurrent();
         if (!saved) return;
         if (currentIndex < imageNames.length - 1) {
             setCurrentIndex(currentIndex + 1);
-            setSelectedLabelIndex(null);
+            setSelectedLabelIndices([]);
             setImageDimensions(null);
         } else {
              showToast(`Reached end of ${projectType === 'NER' ? 'texts' : 'images'}`, 'success');
@@ -504,7 +508,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         if (!saved) return;
         if (currentIndex > 0) {
             setCurrentIndex(currentIndex - 1);
-            setSelectedLabelIndex(null);
+            setSelectedLabelIndices([]);
             setImageDimensions(null);
         }
     };
@@ -521,7 +525,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         
         if (currentIndex < imageNames.length - 1) {
             setCurrentIndex(currentIndex + 1);
-            setSelectedLabelIndex(null);
+            setSelectedLabelIndices([]);
             setImageDimensions(null);
         } else {
              showToast(`Reached end of ${projectType === 'NER' ? 'texts' : 'images'}`, 'success');
@@ -540,11 +544,11 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
             // We shouldn't mutate imageNames directly as it's a prop, but for the UI to move on:
             if (currentIndex < imageNames.length - 1) {
                 setCurrentIndex(currentIndex + 1);
-                setSelectedLabelIndex(null);
+                setSelectedLabelIndices([]);
                 setImageDimensions(null);
             } else if (currentIndex > 0) {
                 setCurrentIndex(currentIndex - 1);
-                setSelectedLabelIndex(null);
+                setSelectedLabelIndices([]);
                 setImageDimensions(null);
             } else {
                 showToast(`No more ${projectType === 'NER' ? 'texts' : 'images'}`, 'success');
@@ -564,7 +568,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         if (!saved) return;
         if (targetIndex >= 0 && targetIndex < imageNames.length) {
             setCurrentIndex(targetIndex);
-            setSelectedLabelIndex(null);
+            setSelectedLabelIndices([]);
             setImageDimensions(null);
         } else {
             showToast(`Invalid ${projectType === 'NER' ? 'text file' : 'image'} index`, 'error');
@@ -574,7 +578,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
     const markEmptyAndNext = async () => {
         if (!currentImageName) return;
         setLabels([]);
-        setSelectedLabelIndex(null);
+        setSelectedLabelIndices([]);
         setIsSaving(true);
         try {
             if (projectType === 'Yolo' || projectType === 'Yolo OBB') {
@@ -711,12 +715,13 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         }
     };
 
-    const runLivePrediction = async (confThresh?: number) => {
+    const runLivePrediction = async (confThresh?: number, iou?: number) => {
         if (!currentImageName || !dbnetModelPath) return;
         setIsAiLoading(true);
         try {
             const payload: any = { img_name: currentImageName };
             if (confThresh !== undefined) payload.conf_thresh = confThresh;
+            if (iou !== undefined) payload.iou_thresh = iou;
             const res = await api.post(`/projects/${projectId}/predict-live`, payload);
             if (res.data) {
                 if (res.data.boxes) {
@@ -754,8 +759,8 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         setActiveClassCode,
         labels,
         setLabels,
-        selectedLabelIndex,
-        setSelectedLabelIndex,
+        selectedLabelIndices,
+        setSelectedLabelIndices,
         ocrValue,
         setOcrValue,
         deskewAngle,
@@ -807,6 +812,8 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         setAutoPredictEnabled,
         ocrConf,
         setOcrConf,
+        iouThresh,
+        setIouThresh,
     };
 }
 

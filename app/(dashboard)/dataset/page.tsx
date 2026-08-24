@@ -15,6 +15,7 @@ interface AugOptions {
   grain: boolean;
   noise: boolean;
   blur: boolean;
+  max_rotation: number;
   num_augs: number;
   deskew_angles: number[];
   ocr_distortion_intensity: number;
@@ -128,6 +129,7 @@ export default function DatasetPage() {
       grain: false,
       noise: false,
       blur: false,
+      max_rotation: 0,
       num_augs: 3,
       deskew_angles: [],
       ocr_distortion_intensity: 0,
@@ -756,6 +758,27 @@ export default function DatasetPage() {
                     onChange={(v) => setAug('blur', v)}
                     description="Slightly blur the image"
                   />
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 w-4 h-4 flex flex-shrink-0 items-center justify-center text-gray-400 font-bold">
+                      ⟳
+                    </div>
+                    <div>
+                      <span className="text-sm font-medium text-black">Random Rotation</span>
+                      <p className="text-xs text-gray-500 mt-0.5">Rotate images randomly between -max and +max degrees</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-xs text-gray-600">Max angle:</span>
+                        <input 
+                          type="number" 
+                          min="0" 
+                          max="180" 
+                          value={config.augmentation.max_rotation}
+                          onChange={e => setAug('max_rotation', parseInt(e.target.value) || 0)}
+                          className="w-16 px-2 py-1 text-xs text-black border border-gray-300 rounded focus:ring-1 focus:ring-blue-300 outline-none bg-white"
+                        />
+                        <span className="text-xs text-gray-600">degrees</span>
+                      </div>
+                    </div>
+                  </div>
                 </>
               )}
             </div>

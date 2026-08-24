@@ -7,8 +7,8 @@ interface NERAnnotatorProps {
   onLabelsChange: (labels: any[]) => void;
   activeClassCode: number | null;
   classes: any[];
-  selectedLabelIndex: number | null;
-  setSelectedLabelIndex: (index: number | null) => void;
+  selectedLabelIndices: number[];
+  setSelectedLabelIndices: (indices: number[]) => void;
   setActiveClassCode?: (code: number) => void;
   onAnnotationAdded?: () => void;
 }
@@ -19,8 +19,8 @@ export function NERAnnotator({
   onLabelsChange,
   activeClassCode,
   classes,
-  selectedLabelIndex,
-  setSelectedLabelIndex,
+  selectedLabelIndices,
+  setSelectedLabelIndices,
   setActiveClassCode,
   onAnnotationAdded,
 }: NERAnnotatorProps) {
@@ -30,12 +30,10 @@ export function NERAnnotator({
   const { showToast } = useAppStore();
 
   const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, labelIndex: number | null }>({ visible: false, x: 0, y: 0, labelIndex: null });
-  const [additionalSelected, setAdditionalSelected] = useState<Set<number>>(new Set());
 
   const mergeSelected = () => {
-    if (selectedLabelIndex === null) return;
-    const allSelected = [selectedLabelIndex, ...Array.from(additionalSelected)];
-    if (allSelected.length < 2) return;
+    if (selectedLabelIndices.length < 2) return;
+    const allSelected = selectedLabelIndices;
     
     let minStart = Infinity;
     let maxEnd = -Infinity;
@@ -46,7 +44,7 @@ export function NERAnnotator({
       if (lbl.end_char > maxEnd) maxEnd = lbl.end_char;
     });
     
-    const mainClass = labels[selectedLabelIndex].class_code;
+    const mainClass = labels[selectedLabelIndices[0]].class_code;
     
     const newLabels = labels.filter((_, idx) => !allSelected.includes(idx));
     const mergedLabel = {
@@ -58,8 +56,7 @@ export function NERAnnotator({
     newLabels.push(mergedLabel);
     
     onLabelsChange(newLabels);
-    setSelectedLabelIndex(newLabels.length - 1);
-    setAdditionalSelected(new Set());
+    setSelectedLabelIndices([newLabels.length - 1]);
   };
   useEffect(() => {
     const fetchText = async () => {
@@ -125,7 +122,7 @@ export function NERAnnotator({
     };
 
     onLabelsChange([...labels, newLabel]);
-    setSelectedLabelIndex(labels.length);
+    setSelectedLabelIndices([labels.length]);
     isSelectingRef.current = true;
     setTimeout(() => {
       isSelectingRef.current = false;
@@ -172,39 +169,40 @@ export function NERAnnotator({
       // Don't intercept if user is typing in an input field somewhere else
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-      if (selectedLabelIndex !== null) {
+      if (selectedLabelIndices.length === 1) {
         if (e.key === 'ArrowLeft' && !e.shiftKey) {
           e.preventDefault();
-          adjustBoundary(selectedLabelIndex, 'start', -1);
+          adjustBoundary(selectedLabelIndices[0], 'start', -1);
         } else if (e.key === 'ArrowRight' && !e.shiftKey) {
           e.preventDefault();
-          adjustBoundary(selectedLabelIndex, 'end', 1);
+          adjustBoundary(selectedLabelIndices[0], 'end', 1);
         } else if (e.key === 'ArrowLeft' && e.shiftKey) {
           e.preventDefault();
-          adjustBoundary(selectedLabelIndex, 'end', -1);
+          adjustBoundary(selectedLabelIndices[0], 'end', -1);
         } else if (e.key === 'ArrowRight' && e.shiftKey) {
           e.preventDefault();
-          adjustBoundary(selectedLabelIndex, 'start', 1);
-        } else if (e.key === 'Backspace' || e.key === 'Delete') {
+          adjustBoundary(selectedLabelIndices[0], 'start', 1);
+        }
+      }
+      
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        if (selectedLabelIndices.length > 0) {
           e.preventDefault();
-          
-          // Delete all selected
-          const toDelete = new Set([selectedLabelIndex, ...Array.from(additionalSelected)]);
+          const toDelete = new Set(selectedLabelIndices);
           const newLabels = labels.filter((_, idx) => !toDelete.has(idx));
           onLabelsChange(newLabels);
-          setSelectedLabelIndex(null);
-          setAdditionalSelected(new Set());
-        } else if (e.code === 'Space') {
+          setSelectedLabelIndices([]);
+        }
+      } else if (e.code === 'Space') {
+        if (selectedLabelIndices.length > 1) {
           e.preventDefault();
-          if (additionalSelected.size > 0) {
-            mergeSelected();
-          }
+          mergeSelected();
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedLabelIndex, labels, text, additionalSelected]);
+  }, [selectedLabelIndices, labels, text]);
 
   // Render text with highlights
   const renderText = () => {
@@ -227,8 +225,8 @@ export function NERAnnotator({
       const cls = classes.find(c => c.code === lbl.class_code);
       const color = cls ? cls.color : '#ff0000';
       
-      const isSelected = selectedLabelIndex === originalIndex || additionalSelected.has(originalIndex);
-      const isPrimary = selectedLabelIndex === originalIndex;
+      const isSelected = selectedLabelIndices.includes(originalIndex);
+      const isPrimary = selectedLabelIndices[0] === originalIndex;
       
       nodes.push(
         <mark
@@ -246,34 +244,19 @@ export function NERAnnotator({
               setActiveClassCode(lbl.class_code);
             }
             if (e.ctrlKey || e.metaKey) {
-              if (selectedLabelIndex === null) {
-                setSelectedLabelIndex(originalIndex);
-              } else if (selectedLabelIndex === originalIndex) {
-                if (additionalSelected.size > 0) {
-                  const next = Array.from(additionalSelected)[0];
-                  const newSet = new Set(additionalSelected);
-                  newSet.delete(next);
-                  setSelectedLabelIndex(next);
-                  setAdditionalSelected(newSet);
-                } else {
-                  setSelectedLabelIndex(null);
-                }
+              if (selectedLabelIndices.includes(originalIndex)) {
+                setSelectedLabelIndices(selectedLabelIndices.filter(i => i !== originalIndex));
               } else {
-                const newSet = new Set(additionalSelected);
-                if (newSet.has(originalIndex)) newSet.delete(originalIndex);
-                else newSet.add(originalIndex);
-                setAdditionalSelected(newSet);
+                setSelectedLabelIndices([...selectedLabelIndices, originalIndex]);
               }
             } else {
-              setSelectedLabelIndex(originalIndex); 
-              setAdditionalSelected(new Set());
+              setSelectedLabelIndices([originalIndex]); 
             }
           }}
           onContextMenu={(e) => {
             e.preventDefault();
-            if (selectedLabelIndex !== originalIndex && !additionalSelected.has(originalIndex)) {
-              setSelectedLabelIndex(originalIndex);
-              setAdditionalSelected(new Set());
+            if (!selectedLabelIndices.includes(originalIndex)) {
+              setSelectedLabelIndices([originalIndex]);
             }
             setContextMenu({
               visible: true,
@@ -304,8 +287,7 @@ export function NERAnnotator({
   return (
     <div className="flex-1 overflow-auto bg-white p-8 relative" onClick={() => {
       if (!isSelectingRef.current) {
-        setSelectedLabelIndex(null);
-        setAdditionalSelected(new Set());
+        setSelectedLabelIndices([]);
       }
     }}>
       <div 
@@ -335,7 +317,7 @@ export function NERAnnotator({
                     setActiveClassCode(cls.code);
                   }
                   const newLabels = [...labels];
-                  const toChange = new Set([selectedLabelIndex, ...Array.from(additionalSelected)]);
+                  const toChange = new Set(selectedLabelIndices);
                   if (toChange.has(contextMenu.labelIndex)) {
                     toChange.forEach(idx => {
                       if (idx !== null) {
@@ -357,7 +339,7 @@ export function NERAnnotator({
               </button>
             ))}
           </div>
-          {additionalSelected.size > 0 && (
+          {selectedLabelIndices.length > 1 && (
             <div className="border-t border-gray-100 mt-1 pt-1">
               <button
                 className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 text-black font-medium"
