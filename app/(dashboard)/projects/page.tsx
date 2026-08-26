@@ -40,6 +40,19 @@ export default function ProjectsPage() {
     isDeleting: false,
   });
 
+  const [duplicateDialog, setDuplicateDialog] = useState<{
+    isOpen: boolean;
+    project: any | null;
+    nameInput: string;
+    duplicateData: boolean;
+    isDuplicating: boolean;
+  }>({
+    isOpen: false,
+    project: null,
+    nameInput: '',
+    duplicateData: false,
+    isDuplicating: false,
+  });
 
 
   const loadProjects = async () => {
@@ -110,6 +123,22 @@ export default function ProjectsPage() {
     }
   };
 
+  const handleDuplicate = async () => {
+    if (!duplicateDialog.project || !duplicateDialog.nameInput.trim()) return;
+    setDuplicateDialog((d) => ({ ...d, isDuplicating: true }));
+    try {
+      await api.post(`/projects/${duplicateDialog.project.id}/duplicate`, {
+        name: duplicateDialog.nameInput.trim(),
+        duplicate_data: duplicateDialog.duplicateData
+      });
+      showToast(`Project duplicated successfully`, 'success');
+      setDuplicateDialog({ isOpen: false, project: null, nameInput: '', duplicateData: false, isDuplicating: false });
+      loadProjects();
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to duplicate project', 'error');
+      setDuplicateDialog((d) => ({ ...d, isDuplicating: false }));
+    }
+  };
 
 
   const openModal = (project?: any) => {
@@ -133,6 +162,16 @@ export default function ProjectsPage() {
 
   const openDeleteDialog = (project: any) => {
     setDeleteDialog({ isOpen: true, project, nameInput: '', isDeleting: false });
+  };
+
+  const openDuplicateDialog = (project: any) => {
+    setDuplicateDialog({
+      isOpen: true,
+      project,
+      nameInput: `${project.name} - Copy`,
+      duplicateData: false,
+      isDuplicating: false,
+    });
   };
 
   const deleteNameMatches =
@@ -180,6 +219,9 @@ export default function ProjectsPage() {
             <>
               <Button size="sm" variant="warning" onClick={() => openModal(row)}>
                 Edit
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => openDuplicateDialog(row)}>
+                Duplicate
               </Button>
               <Button size="sm" variant="danger" onClick={() => setConfirmDialog({ isOpen: true, id: row.id })}>
                 Deactivate
@@ -368,6 +410,56 @@ export default function ProjectsPage() {
               isLoading={deleteDialog.isDeleting}
             >
               Delete Forever
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Duplicate Project Modal */}
+      <Modal
+        isOpen={duplicateDialog.isOpen}
+        onClose={() => !duplicateDialog.isDuplicating && setDuplicateDialog({ isOpen: false, project: null, nameInput: '', duplicateData: false, isDuplicating: false })}
+        title="Duplicate Project"
+      >
+        <div className="space-y-4">
+          <Input
+            label="New Project Name"
+            value={duplicateDialog.nameInput}
+            onChange={(e) => setDuplicateDialog((d) => ({ ...d, nameInput: e.target.value }))}
+            required
+            disabled={duplicateDialog.isDuplicating}
+          />
+          <div className="flex items-center gap-2 mt-2">
+            <input
+              type="checkbox"
+              id="duplicate-data"
+              checked={duplicateDialog.duplicateData}
+              onChange={(e) => setDuplicateDialog((d) => ({ ...d, duplicateData: e.target.checked }))}
+              disabled={duplicateDialog.isDuplicating}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-300"
+            />
+            <label htmlFor="duplicate-data" className="text-sm font-medium text-black cursor-pointer">
+              Duplicate Data (Images) too
+            </label>
+          </div>
+          <p className="text-xs text-gray-500">
+            Note: Annotations (labels) are not copied. The new project will retain the same type and classes as the original.
+          </p>
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+            <Button
+              variant="ghost"
+              onClick={() => setDuplicateDialog({ isOpen: false, project: null, nameInput: '', duplicateData: false, isDuplicating: false })}
+              disabled={duplicateDialog.isDuplicating}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleDuplicate}
+              disabled={duplicateDialog.nameInput.trim() === '' || duplicateDialog.isDuplicating}
+              isLoading={duplicateDialog.isDuplicating}
+            >
+              Duplicate
             </Button>
           </div>
         </div>

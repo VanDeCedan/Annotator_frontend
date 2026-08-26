@@ -188,6 +188,14 @@ export default function AnnotatePage() {
     });
   };
 
+  // Reset class to the first class when moving to a new image if autoAdvanceClass is enabled
+  useEffect(() => {
+    if (autoAdvanceClass && classes.length > 0 && (projectType === 'Yolo' || projectType === 'Yolo OBB')) {
+      const sorted = [...classes].sort((a, b) => a.code - b.code);
+      setActiveClassCode(sorted[0].code);
+    }
+  }, [currentIndex, autoAdvanceClass, classes, projectType, setActiveClassCode]);
+
   // Sidebar resizer state
   const [sidebarWidth, setSidebarWidth] = useState(288); // Default 288px (Tailwind w-72)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
