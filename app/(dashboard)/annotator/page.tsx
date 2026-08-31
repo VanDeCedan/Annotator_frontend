@@ -117,16 +117,60 @@ function BoxOverlayCanvas({ projectId, imgName }: { projectId: string; imgName: 
 }
 
 // ---------------------------------------------------------------------------
+// NERTextPreview – shows first lines of a text file as a card thumbnail
+// ---------------------------------------------------------------------------
+function NERTextPreview({ projectId, imgName }: { projectId: string; imgName: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      async ([entry]) => {
+        if (!entry.isIntersecting || fetchedRef.current) return;
+        fetchedRef.current = true;
+        try {
+          const url = `${API_BASE}/projects/${projectId}/images/local_workspace/${encodeURIComponent(imgName)}`;
+          const res = await fetch(url);
+          const text = await res.text();
+          setPreview(text.replace(/\r\n/g, '\n').slice(0, 300));
+        } catch {
+          setPreview('');
+        }
+      },
+      { threshold: 0.1 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [projectId, imgName]);
+
+  return (
+    <div ref={containerRef} className="w-full h-full bg-gray-50 p-2 overflow-hidden text-left">
+      {preview === null ? (
+        <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">Loading…</div>
+      ) : preview === '' ? (
+        <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">Empty</div>
+      ) : (
+        <p className="text-[10px] text-gray-600 leading-relaxed whitespace-pre-wrap break-words line-clamp-[8]">{preview}</p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ImageGridPanel – scrollable thumbnail grid shown when a mode card is clicked
 // ---------------------------------------------------------------------------
 interface ImageGridPanelProps {
   mode: 'annotated' | 'unannotated' | 'skipped';
   images: string[];
   projectId: string;
+  projectType: string;
   onClose: () => void;
 }
 
-function ImageGridPanel({ mode, images, projectId, onClose }: ImageGridPanelProps) {
+function ImageGridPanel({ mode, images, projectId, projectType, onClose }: ImageGridPanelProps) {
   const router = useRouter();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
@@ -208,16 +252,20 @@ function ImageGridPanel({ mode, images, projectId, onClose }: ImageGridPanelProp
                     title={imgName}
                   >
                     <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={thumbUrl}
-                        alt={imgName}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
-                      {/* Box overlay for annotated images */}
-                      {mode === 'annotated' && (
+                      {projectType === 'NER' ? (
+                        <NERTextPreview projectId={projectId} imgName={imgName} />
+                      ) : (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={thumbUrl}
+                          alt={imgName}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      )}
+                      {/* Box overlay for annotated images (non-NER) */}
+                      {mode === 'annotated' && projectType !== 'NER' && (
                         <BoxOverlayCanvas
                           projectId={projectId}
                           imgName={imgName}
@@ -532,6 +580,7 @@ export default function AnnotatorSetupPage() {
             unannotatedImages
           }
           projectId={projectId}
+          projectType={projectInfo?.type || ''}
           onClose={() => setGridPanel(null)}
         />
       )}

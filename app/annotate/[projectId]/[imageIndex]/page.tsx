@@ -859,95 +859,190 @@ export default function AnnotatePage() {
               </svg>
             </div>
           )}
+          
+          {/* Navigation controls — vertical strip for NER, horizontal bottom bar for others */}
+          {projectType === 'NER' ? (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 bg-white border border-gray-300 px-2 py-3 rounded-lg shadow-md text-black z-10">
+              {/* Prev */}
+              <button
+                onClick={prevImage}
+                disabled={!canPrev}
+                className={`p-1.5 rounded transition-colors ${canPrev ? 'hover:bg-gray-100 text-black' : 'text-gray-300 cursor-not-allowed'}`}
+                title="Previous"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+              </button>
+              {/* Counter */}
+              <span className="text-[10px] font-bold text-gray-600 text-center leading-tight">
+                {currentIndex + 1}<br/><span className="text-gray-400 font-normal">/{imageNames.length}</span>
+              </span>
+              {/* Next */}
+              <button
+                onClick={nextImage}
+                disabled={!canNext}
+                className={`p-1.5 rounded transition-colors ${canNext ? 'hover:bg-gray-100 text-black' : 'text-gray-300 cursor-not-allowed'}`}
+                title="Save & Next"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
 
-          {/* Navigation controls */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-white border border-gray-300 px-4 py-2 rounded shadow text-black z-10">
-            <button
-              onClick={() => {
-                if(window.confirm('Are you sure you want to delete all labels on this image?')) {
-                  setLabels([]);
-                  if (setSelectedLabelIndices) setSelectedLabelIndices([]);
-                }
-              }}
-              className="px-2 py-1 bg-red-50 text-red-600 rounded border border-red-200 hover:bg-red-100 text-xs font-medium"
-              title="Clear all labels on this image"
-            >
-              Clear All
-            </button>
-            {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'KIE' || projectType === 'NER') && (
+              <div className="w-full h-px bg-gray-200 my-0.5" />
+
+              {/* Jump */}
+              <div className="flex flex-col items-center gap-0.5">
+                <span className="text-[9px] text-gray-400 font-medium uppercase">Jump</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={imageNames.length}
+                  placeholder="#"
+                  className="w-10 border border-gray-300 rounded px-1 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const val = parseInt(e.currentTarget.value);
+                      if (!isNaN(val) && val >= 1 && val <= imageNames.length) {
+                        jumpToImage(val - 1);
+                        e.currentTarget.value = '';
+                      }
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="w-full h-px bg-gray-200 my-0.5" />
+
+              {/* Skip */}
+              <button
+                onClick={skipImage}
+                disabled={!canNext}
+                className={`px-1.5 py-1 rounded border transition-colors text-[10px] font-medium w-full text-center ${canNext ? 'bg-gray-50 border-gray-300 hover:bg-gray-200 text-gray-700' : 'text-gray-300 border-gray-200 cursor-not-allowed'}`}
+                title="Skip without saving"
+              >
+                Skip
+              </button>
+
+              {/* Clear All */}
               <button
                 onClick={() => {
-                  if(window.confirm('Mark this image as background (empty) and go to next?')) {
-                    markEmptyAndNext();
+                  if (window.confirm('Clear all labels on this text?')) {
+                    setLabels([]);
+                    if (setSelectedLabelIndices) setSelectedLabelIndices([]);
                   }
                 }}
-                className="px-2 py-1 bg-yellow-50 text-yellow-700 rounded border border-yellow-200 hover:bg-yellow-100 text-xs font-medium whitespace-nowrap"
-                title="Mark image as empty background and go next"
+                className="px-1.5 py-1 bg-red-50 text-red-600 rounded border border-red-200 hover:bg-red-100 text-[10px] font-medium w-full text-center"
+                title="Clear all labels"
               >
-                Mark Empty
+                Clear
               </button>
-            )}
-            <div className="w-px h-6 bg-gray-300 mx-1"></div>
-            
-            <button
-              onClick={prevImage}
-              disabled={!canPrev}
-              className={`p-1 rounded transition-colors ${canPrev ? 'hover:bg-gray-100 text-black' : 'text-gray-300 cursor-not-allowed'}`}
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <span className="text-sm font-semibold min-w-[70px] text-center">
-              {currentIndex + 1} / {imageNames.length}
-            </span>
-            <button
-              onClick={nextImage}
-              disabled={!canNext}
-              className={`p-1 rounded transition-colors ${canNext ? 'hover:bg-gray-100 text-black' : 'text-gray-300 cursor-not-allowed'}`}
-              title="Save & Next"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-            <div className="w-px h-6 bg-gray-300 mx-1"></div>
-            <button
-              onClick={skipImage}
-              disabled={!canNext}
-              className={`px-2 py-1 rounded border transition-colors text-xs font-medium ${canNext ? 'bg-gray-50 border-gray-300 hover:bg-gray-200 text-gray-700' : 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'}`}
-              title="Skip without saving"
-            >
-              Skip
-            </button>
-            <div className="flex items-center gap-1 ml-2 border-l border-gray-300 pl-3">
-              <span className="text-xs text-gray-500 font-medium">Jump:</span>
-              <input 
-                type="number" 
-                min={1} 
-                max={imageNames.length}
-                placeholder="#"
-                className="w-14 border border-gray-300 rounded px-1 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    const val = parseInt(e.currentTarget.value);
-                    if (!isNaN(val) && val >= 1 && val <= imageNames.length) {
-                       jumpToImage(val - 1);
-                       e.currentTarget.value = '';
-                    }
+
+              {/* Mark Empty */}
+              <button
+                onClick={() => {
+                  if (window.confirm('Mark as empty and go to next?')) markEmptyAndNext();
+                }}
+                className="px-1.5 py-1 bg-yellow-50 text-yellow-700 rounded border border-yellow-200 hover:bg-yellow-100 text-[10px] font-medium w-full text-center"
+                title="Mark as empty"
+              >
+                Empty
+              </button>
+
+              {/* Delete */}
+              <button
+                onClick={deleteImage}
+                className="px-1.5 py-1 rounded border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 text-[10px] font-medium w-full text-center"
+                title="Delete from dataset"
+              >
+                Delete
+              </button>
+            </div>
+          ) : (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-white border border-gray-300 px-4 py-2 rounded shadow text-black z-10">
+              <button
+                onClick={() => {
+                  if(window.confirm('Are you sure you want to delete all labels on this image?')) {
+                    setLabels([]);
+                    if (setSelectedLabelIndices) setSelectedLabelIndices([]);
                   }
                 }}
-              />
+                className="px-2 py-1 bg-red-50 text-red-600 rounded border border-red-200 hover:bg-red-100 text-xs font-medium"
+                title="Clear all labels on this image"
+              >
+                Clear All
+              </button>
+              {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'KIE') && (
+                <button
+                  onClick={() => {
+                    if(window.confirm('Mark this image as background (empty) and go to next?')) {
+                      markEmptyAndNext();
+                    }
+                  }}
+                  className="px-2 py-1 bg-yellow-50 text-yellow-700 rounded border border-yellow-200 hover:bg-yellow-100 text-xs font-medium whitespace-nowrap"
+                  title="Mark image as empty background and go next"
+                >
+                  Mark Empty
+                </button>
+              )}
+              <div className="w-px h-6 bg-gray-300 mx-1" />
+              <button
+                onClick={prevImage}
+                disabled={!canPrev}
+                className={`p-1 rounded transition-colors ${canPrev ? 'hover:bg-gray-100 text-black' : 'text-gray-300 cursor-not-allowed'}`}
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <span className="text-sm font-semibold min-w-[70px] text-center">
+                {currentIndex + 1} / {imageNames.length}
+              </span>
+              <button
+                onClick={nextImage}
+                disabled={!canNext}
+                className={`p-1 rounded transition-colors ${canNext ? 'hover:bg-gray-100 text-black' : 'text-gray-300 cursor-not-allowed'}`}
+                title="Save & Next"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              <div className="w-px h-6 bg-gray-300 mx-1" />
+              <button
+                onClick={skipImage}
+                disabled={!canNext}
+                className={`px-2 py-1 rounded border transition-colors text-xs font-medium ${canNext ? 'bg-gray-50 border-gray-300 hover:bg-gray-200 text-gray-700' : 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'}`}
+                title="Skip without saving"
+              >
+                Skip
+              </button>
+              <div className="flex items-center gap-1 ml-2 border-l border-gray-300 pl-3">
+                <span className="text-xs text-gray-500 font-medium">Jump:</span>
+                <input 
+                  type="number" 
+                  min={1} 
+                  max={imageNames.length}
+                  placeholder="#"
+                  className="w-14 border border-gray-300 rounded px-1 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const val = parseInt(e.currentTarget.value);
+                      if (!isNaN(val) && val >= 1 && val <= imageNames.length) {
+                         jumpToImage(val - 1);
+                         e.currentTarget.value = '';
+                      }
+                    }
+                  }}
+                />
+              </div>
+              <div className="w-px h-6 bg-gray-300 mx-1" />
+              <button
+                onClick={deleteImage}
+                className="px-2 py-1 rounded border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 transition-colors text-xs font-medium"
+                title="Delete Image from Dataset"
+              >
+                Delete
+              </button>
             </div>
-            <div className="w-px h-6 bg-gray-300 mx-1"></div>
-            <button
-              onClick={deleteImage}
-              className="px-2 py-1 rounded border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 transition-colors text-xs font-medium"
-              title="Delete Image from Dataset"
-            >
-              Delete
-            </button>
-          </div>
+          )}
           </div>
 
           {projectType === 'Ocr' && (

@@ -65,7 +65,7 @@ export function NERAnnotator({
         const res = await fetch(fileUrl);
         if (!res.ok) throw new Error('Network response was not ok');
         const textData = await res.text();
-        setText(textData);
+        setText(textData.replace(/\r\n/g, '\n'));
       } catch (err) {
         showToast('Failed to load text file', 'error');
       } finally {
@@ -98,20 +98,19 @@ export function NERAnnotator({
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !containerRef.current) return;
 
-    // Find the start and end offsets relative to the entire text
     const range = selection.getRangeAt(0);
-    
-    let startChar = 0;
-    let endChar = 0;
-    
+
+    // Normalize \r\n → \n in Range.toString() results.
+    // On Windows, browsers can return \r\n for line breaks inside whitespace-pre-wrap
+    // content, which would inflate the offset by 1 for every newline before the selection.
     const preSelectionRange = range.cloneRange();
     preSelectionRange.selectNodeContents(containerRef.current);
     preSelectionRange.setEnd(range.startContainer, range.startOffset);
-    startChar = preSelectionRange.toString().length;
-    
-    const selectedText = range.toString();
-    endChar = startChar + selectedText.length;
-    
+    const startChar = preSelectionRange.toString().replace(/\r\n/g, '\n').length;
+
+    const selectedText = range.toString().replace(/\r\n/g, '\n');
+    const endChar = startChar + selectedText.length;
+
     if (startChar === endChar) return;
 
     const newLabel = {
@@ -127,7 +126,7 @@ export function NERAnnotator({
     setTimeout(() => {
       isSelectingRef.current = false;
     }, 100);
-    
+
     selection.removeAllRanges();
     if (onAnnotationAdded) onAnnotationAdded();
   };
@@ -231,13 +230,15 @@ export function NERAnnotator({
       nodes.push(
         <mark
           key={`mark-${idx}`}
+          className="ner-mark"
+          data-label={cls ? cls.label : 'Unknown'}
           style={{ 
-            backgroundColor: color + '80', // add transparency
-            padding: '2px 0',
-            borderRadius: '2px',
+            backgroundColor: color + '40', // add transparency
+            borderBottom: `2px solid ${color}`,
             cursor: 'pointer',
-            border: isPrimary ? '2px solid black' : isSelected ? '2px dashed black' : 'none'
-          }}
+            border: isPrimary ? '2px solid black' : isSelected ? '2px dashed black' : 'none',
+            '--mark-color': color
+          } as React.CSSProperties}
           onClick={(e) => { 
             e.stopPropagation(); 
             if (setActiveClassCode) {
@@ -255,15 +256,14 @@ export function NERAnnotator({
           }}
           onContextMenu={(e) => {
             e.preventDefault();
-            if (!selectedLabelIndices.includes(originalIndex)) {
-              setSelectedLabelIndices([originalIndex]);
-            }
-            setContextMenu({
-              visible: true,
-              x: e.clientX,
-              y: e.clientY,
-              labelIndex: originalIndex
-            });
+            // Right-click = instant delete
+            const toDelete = new Set(
+              selectedLabelIndices.includes(originalIndex)
+                ? selectedLabelIndices   // delete all selected
+                : [originalIndex]        // delete just this one
+            );
+            onLabelsChange(labels.filter((_, i) => !toDelete.has(i)));
+            setSelectedLabelIndices([]);
           }}
         >
           {text.slice(Math.max(currentPos, lbl.start_char), lbl.end_char)}
@@ -280,26 +280,114 @@ export function NERAnnotator({
     return nodes;
   };
 
+  // Handle hotkeys for selecting classes (1-9) — must be before any early returns (Rules of Hooks)
+  useEffect(() => {
+    const handleClassHotkey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const num = parseInt(e.key);
+      if (!isNaN(num) && num > 0 && num <= classes.length) {
+        e.preventDefault();
+        const cls = classes[num - 1];
+        if (setActiveClassCode) {
+          setActiveClassCode(cls.code);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleClassHotkey);
+    return () => window.removeEventListener('keydown', handleClassHotkey);
+  }, [classes, setActiveClassCode]);
+
   if (isLoading) {
     return <div className="flex-1 flex items-center justify-center text-black">Loading text...</div>;
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-white p-8 relative" onClick={() => {
+    <div className="flex-1 flex flex-col bg-white overflow-hidden" onClick={() => {
       if (!isSelectingRef.current) {
         setSelectedLabelIndices([]);
       }
     }}>
-      <div 
-        ref={containerRef}
-        onMouseUp={handleMouseUp}
-        className="max-w-4xl mx-auto text-lg leading-loose whitespace-pre-wrap font-sans text-gray-800 selection:bg-blue-200"
-      >
-        {renderText()}
+      <style>{`
+        .ner-mark {
+          position: relative;
+          color: black;
+          margin: 0 1px;
+          padding: 2px 0;
+          border-radius: 3px;
+        }
+        .ner-mark::after {
+          content: attr(data-label);
+          position: absolute;
+          top: -1.6em;
+          left: 0;
+          font-size: 0.6em;
+          font-weight: bold;
+          text-transform: uppercase;
+          color: var(--mark-color);
+          background-color: white;
+          border: 1px solid var(--mark-color);
+          border-radius: 2px;
+          padding: 0 4px;
+          white-space: nowrap;
+          pointer-events: none;
+          user-select: none;
+          line-height: 1.2;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+      `}</style>
+
+      {/* Horizontal Class Pills at Top */}
+      <div className="shrink-0 px-4 py-2 border-b border-gray-200 bg-gray-50 flex flex-wrap gap-2 items-center" onClick={(e) => e.stopPropagation()}>
+        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1">Classes:</span>
+        {classes.map((cls, idx) => (
+          <button
+            key={cls.code}
+            onClick={() => {
+              if (setActiveClassCode) setActiveClassCode(cls.code);
+              // If annotations are selected, change their class immediately
+              if (selectedLabelIndices.length > 0) {
+                const newLabels = [...labels];
+                selectedLabelIndices.forEach(idx => {
+                  newLabels[idx] = { ...newLabels[idx], class_code: cls.code };
+                });
+                onLabelsChange(newLabels);
+              }
+            }}
+            className={`flex items-center text-xs font-bold px-3 py-1.5 rounded transition-all ${
+              activeClassCode === cls.code
+                ? 'ring-2 ring-offset-1 ring-blue-400'
+                : 'opacity-70 hover:opacity-100 bg-white border border-gray-200'
+            }`}
+            style={{
+              backgroundColor: activeClassCode === cls.code ? cls.color + '25' : 'white',
+              borderLeft: `4px solid ${cls.color}`,
+              color: 'black',
+            }}
+          >
+            {cls.label}
+            {idx < 9 && (
+              <span className="ml-2 px-1 py-0.5 rounded text-[9px] bg-black/5 border border-black/10 text-gray-400 font-mono">
+                {idx + 1}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Text Canvas */}
+      <div className="flex-1 overflow-auto p-8 relative" style={{ cursor: 'text' }}>
+        <div
+          ref={containerRef}
+          onMouseUp={handleMouseUp}
+          className="max-w-4xl mx-auto text-lg leading-[3.5rem] whitespace-pre-wrap font-sans text-gray-800 selection:bg-blue-200"
+          style={{ cursor: 'text' }}
+        >
+          {renderText()}
+        </div>
       </div>
 
       {contextMenu.visible && contextMenu.labelIndex !== null && (
-        <div 
+        <div
           className="fixed z-50 bg-white border border-gray-200 shadow-xl rounded-md py-1 min-w-[160px]"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
