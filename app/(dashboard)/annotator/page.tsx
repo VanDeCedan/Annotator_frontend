@@ -1,10 +1,250 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import api from '@/lib/api';
 import { useAppStore } from '@/lib/store';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+// ---------------------------------------------------------------------------
+// BoxOverlayCanvas – draws bounding boxes on a canvas overlaid on a thumbnail.
+// Lazily fetches labels only when the thumbnail scrolls into view.
+// ---------------------------------------------------------------------------
+interface LabelEntry {
+  class_code: number;
+  coordinates: string;
+}
+interface ClassEntry {
+  code: number;
+  color: string;
+}
+
+function BoxOverlayCanvas({ projectId, imgName }: { projectId: string; imgName: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [labels, setLabels] = useState<LabelEntry[] | null>(null);
+  const [classes, setClasses] = useState<ClassEntry[]>([]);
+  const [projectType, setProjectType] = useState<string>('');
+  const fetchedRef = useRef(false);
+
+  // Lazy-load: fetch only when scrolled into view
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      async ([entry]) => {
+        if (!entry.isIntersecting || fetchedRef.current) return;
+        fetchedRef.current = true;
+        try {
+          const [labelRes, classRes] = await Promise.all([
+            api.get(`/projects/${projectId}/labels/${imgName}`),
+            api.get(`/projects/${projectId}/classes`),
+          ]);
+          const data = labelRes.data;
+          setProjectType(data.type || '');
+          setClasses(classRes.data || []);
+          if (data.type === 'Yolo' || data.type === 'Yolo OBB' || data.type === 'KIE') {
+            setLabels(data.labels || []);
+          } else {
+            setLabels([]);
+          }
+        } catch {
+          setLabels([]);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [projectId, imgName]);
+
+  // Draw boxes once labels are loaded
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container || !labels || labels.length === 0) return;
+
+    const W = container.clientWidth;
+    const H = container.clientHeight;
+    canvas.width = W;
+    canvas.height = H;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, W, H);
+
+    for (const lbl of labels) {
+      const cls = classes.find((c) => c.code === lbl.class_code);
+      const color = cls ? cls.color : '#ff0000';
+      const coords = lbl.coordinates.split(' ').map(Number);
+      if (coords.length < 4) continue;
+
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color + '55'; // ~33% fill
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+
+      if ((projectType === 'Yolo OBB') && coords.length === 8) {
+        // 4 corner points, normalized: x1 y1 x2 y2 x3 y3 x4 y4
+        ctx.beginPath();
+        ctx.moveTo(coords[0] * W, coords[1] * H);
+        ctx.lineTo(coords[2] * W, coords[3] * H);
+        ctx.lineTo(coords[4] * W, coords[5] * H);
+        ctx.lineTo(coords[6] * W, coords[7] * H);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        // Yolo / KIE: cx cy w h (normalized, center-based)
+        const [cx, cy, bw, bh] = coords;
+        const x = (cx - bw / 2) * W;
+        const y = (cy - bh / 2) * H;
+        ctx.beginPath();
+        ctx.rect(x, y, bw * W, bh * H);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  }, [labels, classes, projectType]);
+
+  return (
+    <div ref={containerRef} className="absolute inset-0 pointer-events-none">
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ImageGridPanel – scrollable thumbnail grid shown when a mode card is clicked
+// ---------------------------------------------------------------------------
+interface ImageGridPanelProps {
+  mode: 'annotated' | 'unannotated' | 'skipped';
+  images: string[];
+  projectId: string;
+  onClose: () => void;
+}
+
+function ImageGridPanel({ mode, images, projectId, onClose }: ImageGridPanelProps) {
+  const router = useRouter();
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [search, setSearch] = useState('');
+
+  const filtered = search.trim()
+    ? images.filter((img) => img.toLowerCase().includes(search.trim().toLowerCase()))
+    : images;
+
+  const colorMap = {
+    unannotated: { border: 'border-blue-400', btn: 'bg-blue-600 hover:bg-blue-700', label: 'Unannotated' },
+    annotated:   { border: 'border-green-400', btn: 'bg-green-600 hover:bg-green-700', label: 'Annotated' },
+    skipped:     { border: 'border-gray-400',  btn: 'bg-gray-600 hover:bg-gray-700',  label: 'Skipped' },
+  };
+  const c = colorMap[mode];
+
+  const jumpTo = (imgName: string) => {
+    router.push(`/annotate/${projectId}/0?mode=${mode}&startImage=${encodeURIComponent(imgName)}`);
+  };
+
+  const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === overlayRef.current) onClose();
+  };
+
+  return (
+    <div
+      ref={overlayRef}
+      onClick={handleBackdrop}
+      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+    >
+      <div className={`bg-white rounded-xl shadow-2xl border-2 ${c.border} w-full max-w-5xl flex flex-col`} style={{ maxHeight: '90vh' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
+          <div>
+            <h3 className="text-lg font-bold text-black">{c.label} Images</h3>
+            <p className="text-sm text-gray-500">{images.length} image{images.length !== 1 ? 's' : ''} — scroll &amp; pick a thumbnail to jump there</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => images.length > 0 && jumpTo(images[0])}
+              className={`${c.btn} text-white text-sm font-semibold px-4 py-2 rounded-lg transition`}
+            >
+              ▶ Start from Beginning
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-black transition text-2xl leading-none"
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="px-6 py-3 border-b flex-shrink-0">
+          <input
+            type="text"
+            placeholder="Search by filename…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-300"
+          />
+        </div>
+
+        {/* Grid */}
+        <div className="overflow-y-auto flex-1 p-6">
+          {filtered.length === 0 ? (
+            <div className="text-center text-gray-400 py-16">No images match your search.</div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {filtered.map((imgName) => {
+                const originalIdx = images.indexOf(imgName);
+                const thumbUrl = `${API_BASE}/projects/${projectId}/images/local_workspace/${encodeURIComponent(imgName)}`;
+                return (
+                  <div
+                    key={imgName}
+                    className="group relative border border-gray-200 rounded-lg overflow-hidden bg-gray-50 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer flex flex-col"
+                    onClick={() => jumpTo(imgName)}
+                    title={imgName}
+                  >
+                    <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={thumbUrl}
+                        alt={imgName}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                      {/* Box overlay for annotated images */}
+                      {mode === 'annotated' && (
+                        <BoxOverlayCanvas
+                          projectId={projectId}
+                          imgName={imgName}
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className={`${c.btn} text-white text-xs font-bold px-3 py-1.5 rounded-full shadow`}>
+                          ▶ Start
+                        </span>
+                      </div>
+                      <span className="absolute top-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
+                        #{originalIdx + 1}
+                      </span>
+                    </div>
+                    <div className="px-2 py-1.5 text-[11px] text-gray-600 truncate" title={imgName}>
+                      {imgName}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AnnotatorSetupPage() {
   const router = useRouter();
@@ -32,6 +272,9 @@ export default function AnnotatorSetupPage() {
   const [prelabelsProgress, setPrelabelsProgress] = useState<{ current: number; total: number } | null>(null);
   const [boxImagesProgress, setBoxImagesProgress] = useState<{ current: number; total: number } | null>(null);
 
+  // Which mode's image grid panel is open (null = closed)
+  const [gridPanel, setGridPanel] = useState<'annotated' | 'unannotated' | 'skipped' | null>(null);
+
   const loadBoxImagesData = useCallback(async (id: string) => {
     try {
       const res = await api.get(`/projects/${id}/box-images`);
@@ -58,9 +301,14 @@ export default function AnnotatorSetupPage() {
         bg_count: progressRes.data.bg_count || 0 
       });
 
-      const annotated = allImages.filter(img => labeledImages.includes(img));
-      const skipped = allImages.filter(img => skipped_images.includes(img));
-      const unannotated = allImages.filter(img => !labeledImages.includes(img) && !skipped_images.includes(img));
+      const allImagesSet = new Set(allImages);
+      const labeledSet = new Set(labeledImages);
+      const skippedSet = new Set(skipped_images);
+
+      // Preserve backend order (most recently annotated first)
+      const annotated = labeledImages.filter(img => allImagesSet.has(img));
+      const skipped = skipped_images.filter(img => allImagesSet.has(img));
+      const unannotated = allImages.filter(img => !labeledSet.has(img) && !skippedSet.has(img));
       
       setAnnotatedImages(annotated);
       setUnannotatedImages(unannotated);
@@ -107,7 +355,7 @@ export default function AnnotatorSetupPage() {
   };
 
   const handleStartAnnotation = (mode: 'annotated' | 'unannotated' | 'skipped') => {
-    router.push(`/annotate/${projectId}/0?mode=${mode}`);
+    setGridPanel(mode);
   };
 
   const handleUploadImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -274,6 +522,20 @@ export default function AnnotatorSetupPage() {
 
   return (
     <div className="text-black max-w-4xl mx-auto pb-10">
+      {/* Image Grid Panel overlay */}
+      {gridPanel && projectId && (
+        <ImageGridPanel
+          mode={gridPanel}
+          images={
+            gridPanel === 'annotated' ? annotatedImages :
+            gridPanel === 'skipped'   ? skippedImages :
+            unannotatedImages
+          }
+          projectId={projectId}
+          onClose={() => setGridPanel(null)}
+        />
+      )}
+
       {/* Back */}
       <button onClick={() => router.push(`/annotator`)} className="text-sm text-gray-500 hover:text-black mb-4 inline-flex items-center gap-1">
         ← Back to Projects

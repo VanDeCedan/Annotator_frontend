@@ -5,6 +5,12 @@ import { useAppStore } from '@/lib/store';
 export function useAnnotatorState(projectId: number, imageNames: string[], initialIndex: number = 0, prefixEnabled: boolean = false, prefixValue: string = '') {
     const showToast = useAppStore(s => s.showToast);
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
+    
+    // Sync initialIndex when it resolves asynchronously
+    useEffect(() => {
+        setCurrentIndex(initialIndex);
+    }, [initialIndex]);
+
     const [classes, setClasses] = useState<any[]>([]);
     const [projectType, setProjectType] = useState('');
     const [activeClassCode, setActiveClassCode] = useState<number | null>(null);

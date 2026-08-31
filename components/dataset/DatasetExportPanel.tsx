@@ -73,7 +73,9 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
     const [flipHV, setFlipHV] = useState(false);
     const [grain, setGrain] = useState(false);
     const [noise, setNoise] = useState(false);
+    const [noiseIntensity, setNoiseIntensity] = useState(5);
     const [blur, setBlur] = useState(false);
+    const [blurIntensity, setBlurIntensity] = useState(5);
     const [maxRotation, setMaxRotation] = useState(0);
     const [includeAugInVal, setIncludeAugInVal] = useState(false);
     
@@ -126,7 +128,9 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                     flip_hv: flipHV,
                     grain,
                     noise,
+                    noise_intensity: noiseIntensity,
                     blur,
+                    blur_intensity: blurIntensity,
                     max_rotation: maxRotation,
                     ocr_distortion_intensity: ocrDistortionIntensity,
                     ocr_noise_intensity: ocrNoiseIntensity,
@@ -430,20 +434,50 @@ export function DatasetExportPanel({ isOpen, onClose, projectId, projectType }: 
                                                 <div className="text-sm text-gray-500 mt-0.5">Add subtle photographic grain</div>
                                             </div>
                                         </label>
-                                        <label className="flex items-start gap-3 cursor-pointer">
-                                            <input type="checkbox" checked={noise} onChange={e => setNoise(e.target.checked)} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 bg-white" />
-                                            <div className="-mt-0.5">
-                                                <div className="text-sm font-semibold text-gray-900">Salt & Pepper / Gaussian Noise</div>
-                                                <div className="text-sm text-gray-500 mt-0.5">Add random pixel noise</div>
-                                            </div>
-                                        </label>
-                                        <label className="flex items-start gap-3 cursor-pointer">
-                                            <input type="checkbox" checked={blur} onChange={e => setBlur(e.target.checked)} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 bg-white" />
-                                            <div className="-mt-0.5">
-                                                <div className="text-sm font-semibold text-gray-900">Gaussian Blur</div>
-                                                <div className="text-sm text-gray-500 mt-0.5">Slightly blur the image</div>
-                                            </div>
-                                        </label>
+                                        <div className="flex flex-col gap-2">
+                                            <label className="flex items-start gap-3 cursor-pointer">
+                                                <input type="checkbox" checked={noise} onChange={e => setNoise(e.target.checked)} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 bg-white" />
+                                                <div className="-mt-0.5">
+                                                    <div className="text-sm font-semibold text-gray-900">Salt & Pepper / Gaussian Noise</div>
+                                                    <div className="text-sm text-gray-500 mt-0.5">Add random pixel noise</div>
+                                                </div>
+                                            </label>
+                                            {noise && (
+                                                <div className="flex items-center gap-3 ml-7">
+                                                    <span className="text-sm text-gray-600">Intensity:</span>
+                                                    <input 
+                                                        type="range" 
+                                                        min="1" max="10" step="1" 
+                                                        value={noiseIntensity} 
+                                                        onChange={e => setNoiseIntensity(parseFloat(e.target.value))} 
+                                                        className="w-32 accent-blue-600 cursor-pointer" 
+                                                    />
+                                                    <span className="text-sm font-bold text-gray-700 w-8">{noiseIntensity}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-col gap-2">
+                                            <label className="flex items-start gap-3 cursor-pointer">
+                                                <input type="checkbox" checked={blur} onChange={e => setBlur(e.target.checked)} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 bg-white" />
+                                                <div className="-mt-0.5">
+                                                    <div className="text-sm font-semibold text-gray-900">Gaussian Blur</div>
+                                                    <div className="text-sm text-gray-500 mt-0.5">Slightly blur the image</div>
+                                                </div>
+                                            </label>
+                                            {blur && (
+                                                <div className="flex items-center gap-3 ml-7">
+                                                    <span className="text-sm text-gray-600">Intensity:</span>
+                                                    <input 
+                                                        type="range" 
+                                                        min="1" max="10" step="1" 
+                                                        value={blurIntensity} 
+                                                        onChange={e => setBlurIntensity(parseFloat(e.target.value))} 
+                                                        className="w-32 accent-blue-600 cursor-pointer" 
+                                                    />
+                                                    <span className="text-sm font-bold text-gray-700 w-8">{blurIntensity}</span>
+                                                </div>
+                                            )}
+                                        </div>
                                         <div className="flex items-start gap-3">
                                             <div className="mt-0.5 w-4 h-4 flex items-center justify-center">
                                                 <span className="text-gray-400">⟳</span>

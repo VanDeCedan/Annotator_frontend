@@ -19,7 +19,9 @@ export default function AnnotatePage() {
   const initialIndex = Number(params.imageIndex) || 0;
 
   const mode = searchParams.get('mode');
+  const startImage = searchParams.get('startImage'); // specific image to jump to
   const [imageNames, setImageNames] = useState<string[]>([]);
+  const [resolvedIndex, setResolvedIndex] = useState(initialIndex);
   const [isLoading, setIsLoading] = useState(true);
   const [debugError, setDebugError] = useState<string>('');
 
@@ -33,16 +35,27 @@ export default function AnnotatePage() {
         const labeledImages: string[] = progressRes.data.labeled_images || [];
         const skippedImages: string[] = progressRes.data.skipped_images || [];
 
+        let names: string[] = [];
         if (mode === 'annotated') {
-          setImageNames(allImages.filter(img => labeledImages.includes(img)));
+          names = allImages.filter(img => labeledImages.includes(img));
         } else if (mode === 'unannotated') {
-          setImageNames(allImages.filter(img => !labeledImages.includes(img) && !skippedImages.includes(img)));
+          names = allImages.filter(img => !labeledImages.includes(img) && !skippedImages.includes(img));
         } else if (mode === 'skipped') {
-          setImageNames(allImages.filter(img => skippedImages.includes(img)));
+          names = allImages.filter(img => skippedImages.includes(img));
         } else {
           // Fallback to legacy URL passing
           const imageNamesStr = searchParams.get('images');
-          setImageNames(imageNamesStr ? imageNamesStr.split(',') : allImages);
+          names = imageNamesStr ? imageNamesStr.split(',') : allImages;
+        }
+
+        setImageNames(names);
+
+        // If a specific image was requested, find its index in the ordered list
+        if (startImage) {
+          const idx = names.indexOf(startImage);
+          setResolvedIndex(idx >= 0 ? idx : 0);
+        } else {
+          setResolvedIndex(initialIndex);
         }
       } catch (err: any) {
         console.error(err);
@@ -52,7 +65,7 @@ export default function AnnotatePage() {
       }
     };
     fetchImages();
-  }, [projectId, mode, searchParams]);
+  }, [projectId, mode, searchParams, startImage, initialIndex]);
 
   const [prefixEnabled, setPrefixEnabled] = useState(false);
   const [prefixValue, setPrefixValue] = useState('');
@@ -123,7 +136,7 @@ export default function AnnotatePage() {
     setOcrConf,
     iouThresh,
     setIouThresh,
-  } = useAnnotatorState(projectId, imageNames, initialIndex, prefixEnabled, prefixValue);
+  } = useAnnotatorState(projectId, imageNames, resolvedIndex, prefixEnabled, prefixValue);
 
   const [imageUrl, setImageUrl] = useState('');
   const [rotationStep, setRotationStep] = useState(90);
