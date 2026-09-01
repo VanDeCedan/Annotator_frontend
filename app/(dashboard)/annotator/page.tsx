@@ -10,7 +10,6 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // ---------------------------------------------------------------------------
 // BoxOverlayCanvas – draws bounding boxes on a canvas overlaid on a thumbnail.
-// Lazily fetches labels only when the thumbnail scrolls into view.
 // ---------------------------------------------------------------------------
 interface LabelEntry {
   class_code: number;
@@ -21,50 +20,41 @@ interface ClassEntry {
   color: string;
 }
 
-function BoxOverlayCanvas({ projectId, imgName }: { projectId: string; imgName: string }) {
+function BoxOverlayCanvas({ 
+  projectId, 
+  imgName, 
+  classes, 
+  projectType 
+}: { 
+  projectId: string; 
+  imgName: string;
+  classes: ClassEntry[];
+  projectType: string;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [labels, setLabels] = useState<LabelEntry[] | null>(null);
-  const [classes, setClasses] = useState<ClassEntry[]>([]);
-  const [projectType, setProjectType] = useState<string>('');
-  const fetchedRef = useRef(false);
+  const [labels, setLabels] = useState<LabelEntry[]>([]);
 
-  // Lazy-load: fetch only when scrolled into view
+  // Fetch labels once on mount
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(
-      async ([entry]) => {
-        if (!entry.isIntersecting || fetchedRef.current) return;
-        fetchedRef.current = true;
-        try {
-          const [labelRes, classRes] = await Promise.all([
-            api.get(`/projects/${projectId}/labels/${imgName}`),
-            api.get(`/projects/${projectId}/classes`),
-          ]);
-          const data = labelRes.data;
-          setProjectType(data.type || '');
-          setClasses(classRes.data || []);
-          if (data.type === 'Yolo' || data.type === 'Yolo OBB' || data.type === 'KIE') {
-            setLabels(data.labels || []);
-          } else {
-            setLabels([]);
-          }
-        } catch {
-          setLabels([]);
+    let active = true;
+    api.get(`/projects/${projectId}/labels/${imgName}`)
+      .then(res => {
+        if (!active) return;
+        const data = res.data;
+        if (data.type === 'Yolo' || data.type === 'Yolo OBB' || data.type === 'KIE') {
+          setLabels(data.labels || []);
         }
-      },
-      { threshold: 0.1 }
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
+      })
+      .catch(() => {});
+    return () => { active = false; };
   }, [projectId, imgName]);
 
   // Draw boxes once labels are loaded
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
-    if (!canvas || !container || !labels || labels.length === 0) return;
+    if (!canvas || !container || labels.length === 0) return;
 
     const W = container.clientWidth;
     const H = container.clientHeight;
@@ -174,10 +164,38 @@ function ImageGridPanel({ mode, images, projectId, projectType, onClose }: Image
   const router = useRouter();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
+  const [classes, setClasses] = useState<ClassEntry[]>([]);
+  const [visibleCount, setVisibleCount] = useState(50);
+
+  // Fetch classes once if in annotated mode
+  useEffect(() => {
+    if (mode === 'annotated') {
+      api.get(`/projects/${projectId}/classes`)
+        .then(res => setClasses(res.data || []))
+        .catch(() => {});
+    }
+  }, [projectId, mode]);
+
+  // Reset pagination on search
+  useEffect(() => {
+    setVisibleCount(50);
+  }, [search]);
 
   const filtered = search.trim()
     ? images.filter((img) => img.toLowerCase().includes(search.trim().toLowerCase()))
     : images;
+
+  const visibleImages = filtered.slice(0, visibleCount);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    // Load more if user is near the bottom
+    if (scrollHeight - scrollTop - clientHeight < 400) {
+      if (visibleCount < filtered.length) {
+        setVisibleCount(prev => prev + 50);
+      }
+    }
+  };
 
   const colorMap = {
     unannotated: { border: 'border-blue-400', btn: 'bg-blue-600 hover:bg-blue-700', label: 'Unannotated' },
@@ -236,12 +254,12 @@ function ImageGridPanel({ mode, images, projectId, projectType, onClose }: Image
         </div>
 
         {/* Grid */}
-        <div className="overflow-y-auto flex-1 p-6">
+        <div className="overflow-y-auto flex-1 p-6" onScroll={handleScroll}>
           {filtered.length === 0 ? (
             <div className="text-center text-gray-400 py-16">No images match your search.</div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {filtered.map((imgName) => {
+              {visibleImages.map((imgName) => {
                 const originalIdx = images.indexOf(imgName);
                 const thumbUrl = `${API_BASE}/projects/${projectId}/images/local_workspace/${encodeURIComponent(imgName)}`;
                 return (
@@ -269,6 +287,8 @@ function ImageGridPanel({ mode, images, projectId, projectType, onClose }: Image
                         <BoxOverlayCanvas
                           projectId={projectId}
                           imgName={imgName}
+                          classes={classes}
+                          projectType={projectType}
                         />
                       )}
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
