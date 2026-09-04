@@ -261,7 +261,7 @@ function ImageGridPanel({ mode, images, projectId, projectType, onClose }: Image
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {visibleImages.map((imgName) => {
                 const originalIdx = images.indexOf(imgName);
-                const thumbUrl = `${API_BASE}/projects/${projectId}/images/local_workspace/${encodeURIComponent(imgName)}`;
+                const thumbUrl = `${API_BASE}/projects/${projectId}/images/local_workspace/${encodeURIComponent(imgName)}?thumbnail=true`;
                 return (
                   <div
                     key={imgName}

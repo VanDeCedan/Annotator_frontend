@@ -273,6 +273,7 @@ export default function ProjectsPage() {
               { value: 'Deskewer', label: 'Deskewer — Image Straightening' },
               { value: 'KIE', label: 'KIE — Key Information Extraction' },
               { value: 'NER', label: 'NER — Text Named Entity Recognition' },
+              { value: 'VLM', label: 'VLM — Visual Language Model' },
             ]}
           />
           {formData.type === 'Ocr' && (

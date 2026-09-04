@@ -529,8 +529,8 @@ export function AnnotatorCanvas({
             const posX = (e.clientX - rect.left - offset.x) / scale;
             const posY = (e.clientY - rect.top - offset.y) / scale;
 
-            const delta = e.deltaY > 0 ? 0.9 : 1.1;
-            const newScale = scale * delta;
+            const zoomFactor = e.deltaY > 0 ? 0.95 : 1.05;
+            const newScale = scale * zoomFactor;
 
             setOffset({
                 x: offset.x - posX * (newScale - scale),

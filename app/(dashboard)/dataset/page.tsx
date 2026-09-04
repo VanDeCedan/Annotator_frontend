@@ -37,6 +37,7 @@ interface ExportConfig {
   kie_export_format?: 'dbnet' | 'kie';
   yolo_export_format?: 'yolo' | 'dbnet';
   ocr_export_format?: 'ocr' | 'vit';
+  vlm_export_format?: 'smolvlm' | 'donut' | 'moondream2';
 }
 
 // ─── Helper Components ────────────────────────────────────────────────────────
@@ -139,6 +140,7 @@ export default function DatasetPage() {
     kie_export_format: 'dbnet',
     yolo_export_format: 'yolo',
     ocr_export_format: 'ocr',
+    vlm_export_format: 'smolvlm',
   });
 
 
@@ -245,6 +247,7 @@ export default function DatasetPage() {
         kie_export_format: config.kie_export_format || 'dbnet',
         yolo_export_format: config.yolo_export_format || 'yolo',
         ocr_export_format: config.ocr_export_format || 'ocr',
+        vlm_export_format: config.vlm_export_format || 'smolvlm',
       };
 
 
@@ -507,6 +510,26 @@ export default function DatasetPage() {
             </p>
           </div>
         )}
+
+        {/* VLM Format Selection */}
+        {projectInfo?.type === 'VLM' && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-black mb-1">VLM Export Format</label>
+            <select
+              value={config.vlm_export_format || 'smolvlm'}
+              onChange={(e: any) => setConfig((c) => ({ ...c, vlm_export_format: e.target.value }))}
+              className="w-full max-w-xs border border-gray-300 px-3 py-2 rounded text-black bg-white focus:outline-none focus:ring focus:border-blue-300"
+            >
+              <option value="smolvlm">SmolVLM / SmolVLM2 (conversations JSONL)</option>
+              <option value="donut">Donut (gt_parse JSONL)</option>
+              <option value="moondream2">Moondream2 (qa JSONL)</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Exports <code>images/</code> folder + a <code>dataset.jsonl</code> file per split in the chosen format, ready for fine-tuning.
+            </p>
+          </div>
+        )}
+
 
         {/* Resize */}
         <div className="mb-2">

@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { TopNavbar } from '@/components/annotator/TopNavbar';
 import { ClassPanel } from '@/components/annotator/ClassPanel';
 import { OCRPanel } from '@/components/annotator/OCRPanel';
+import { VLMPanel } from '@/components/annotator/VLMPanel';
 import { AnnotatorCanvas } from '@/components/annotator/AnnotatorCanvas';
 import { NERAnnotator } from '@/components/annotator/NERAnnotator';
 import { useAnnotatorState } from '@/components/annotator/useAnnotatorState';
@@ -83,6 +84,8 @@ export default function AnnotatePage() {
     setSelectedLabelIndices,
     ocrValue,
     setOcrValue,
+    vlmValues,
+    setVlmValues,
     deskewAngle,
     setDeskewAngle,
     deskewCrop,
@@ -136,6 +139,8 @@ export default function AnnotatePage() {
     setOcrConf,
     iouThresh,
     setIouThresh,
+    maintainPrevious,
+    setMaintainPrevious,
   } = useAnnotatorState(projectId, imageNames, resolvedIndex, prefixEnabled, prefixValue);
 
   const [imageUrl, setImageUrl] = useState('');
@@ -148,6 +153,62 @@ export default function AnnotatePage() {
   const [dbnetThresh, setDbnetThresh] = useState(0.7);
   const [parseqMinConf, setParseqMinConf] = useState(0.5);
   const [aiThresh, setAiThresh] = useState(0.25);
+  const [vlmZoom, setVlmZoom] = useState(1);
+  const [vlmTransformOrigin, setVlmTransformOrigin] = useState('center center');
+  const [vlmPan, setVlmPan] = useState({ x: 0, y: 0 });
+  const [isVlmDragging, setIsVlmDragging] = useState(false);
+  const [vlmDragStart, setVlmDragStart] = useState({ x: 0, y: 0 });
+  const vlmViewerRef = useRef<HTMLDivElement>(null);
+
+  // Prevent default Wheel globally to stop page zoom/scroll when over VLM viewer
+  // Also handle Escape to fit to page
+  useEffect(() => {
+    const handleGlobalWheel = (e: WheelEvent) => {
+      if (projectType !== 'VLM') return;
+      
+      const viewer = vlmViewerRef.current;
+      if (!viewer || !viewer.contains(e.target as Node)) return;
+
+      e.preventDefault(); // Stop entire page from zooming or scrolling
+      if (e.ctrlKey) {
+        setVlmZoom(prev => {
+          const zoomFactor = e.deltaY > 0 ? 0.95 : 1.05;
+          return Math.min(10, Math.max(0.1, prev * zoomFactor));
+        });
+      } else {
+        if (e.shiftKey) {
+          setVlmPan(prev => ({ ...prev, x: prev.x - e.deltaY }));
+        } else {
+          setVlmPan(prev => ({ ...prev, y: prev.y - e.deltaY }));
+        }
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (projectType === 'VLM' && e.key === 'Escape') {
+        setVlmZoom(1);
+        setVlmTransformOrigin('center center');
+        setVlmPan({ x: 0, y: 0 });
+      }
+    };
+
+    window.addEventListener('wheel', handleGlobalWheel, { passive: false });
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('wheel', handleGlobalWheel);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [projectType]);
+
+
+  // Reset zoom when changing images in VLM mode
+  useEffect(() => {
+    if (projectType === 'VLM') {
+      setVlmZoom(1);
+      setVlmTransformOrigin('center center');
+      setVlmPan({ x: 0, y: 0 });
+    }
+  }, [currentIndex, projectType]);
 
   // Crop state
   const [isCropping, setIsCropping] = useState(false);
@@ -210,7 +271,7 @@ export default function AnnotatePage() {
   }, [currentIndex, autoAdvanceClass, classes, projectType, setActiveClassCode]);
 
   // Sidebar resizer state
-  const [sidebarWidth, setSidebarWidth] = useState(288); // Default 288px (Tailwind w-72)
+  const [sidebarWidth, setSidebarWidth] = useState(450); // Default 450px
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
@@ -336,7 +397,7 @@ export default function AnnotatePage() {
       <div className="flex flex-1 overflow-hidden" style={{ cursor: isResizingSidebar ? 'col-resize' : 'default' }}>
 
         {/* Left Sidebar: Annotation Tools */}
-        {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'KIE' || projectType === 'NER') && (
+        {(projectType === 'Yolo' || projectType === 'Yolo OBB' || projectType === 'KIE' || projectType === 'NER' || projectType === 'VLM') && (
           <div className={`relative shrink-0 bg-white border-r border-gray-200 flex flex-col h-full z-10 shadow-xs transition-all duration-200 ${isLeftSidebarOpen ? 'w-80' : 'w-0'}`}>
             <button
               onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
@@ -356,22 +417,44 @@ export default function AnnotatePage() {
             </label>
 
             {/* Auto-advance class */}
-            <label className={`flex items-center gap-2.5 cursor-pointer p-2.5 rounded-lg border transition-all mb-3 ${
-              autoAdvanceClass
-                ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm'
-                : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
-            }`}>
-              <input
-                type="checkbox"
-                checked={autoAdvanceClass}
-                onChange={(e) => setAutoAdvanceClass(e.target.checked)}
-                className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"
-              />
-              <div className="flex flex-col">
-                <span className="text-sm font-semibold">Auto-advance class</span>
-                <span className="text-[11px] text-gray-500 font-normal">Next annotation uses the next class</span>
-              </div>
-            </label>
+            {projectType !== 'VLM' && (
+              <label className={`flex items-center gap-2.5 cursor-pointer p-2.5 rounded-lg border transition-all mb-3 ${
+                autoAdvanceClass
+                  ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm'
+                  : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={autoAdvanceClass}
+                  onChange={(e) => setAutoAdvanceClass(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500"
+                />
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold">Auto-advance class</span>
+                  <span className="text-[11px] text-gray-500 font-normal">Next annotation uses the next class</span>
+                </div>
+              </label>
+            )}
+
+            {/* Maintain Previous Information (VLM Only) */}
+            {projectType === 'VLM' && (
+              <label className={`flex items-center gap-2.5 cursor-pointer p-2.5 rounded-lg border transition-all mb-3 ${
+                maintainPrevious
+                  ? 'bg-green-50 border-green-500 text-green-700 shadow-sm'
+                  : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={maintainPrevious}
+                  onChange={(e) => setMaintainPrevious(e.target.checked)}
+                  className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500"
+                />
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold">Maintain previous</span>
+                  <span className="text-[11px] text-gray-500 font-normal">Keep texts from previous image when advancing</span>
+                </div>
+              </label>
+            )}
 
             {/* AI Tools Section for KIE (only shown if dbnetModelPath is provided) */}
             {projectType === 'KIE' && dbnetModelPath && (
@@ -468,7 +551,7 @@ export default function AnnotatePage() {
             )}
 
             {/* Boxes Images Tools Section */}
-            {projectType !== 'KIE' && projectType !== 'NER' && (
+            {(projectType === 'Yolo' || projectType === 'Yolo OBB') && (
               <>
             {/* Boxes Images Tools Section */}
             <hr className="my-3 border-gray-200" />
@@ -830,6 +913,135 @@ export default function AnnotatePage() {
                 setActiveClassCode={setActiveClassCode}
                 onAnnotationAdded={handleAnnotationAdded}
               />
+            ) : projectType === 'VLM' ? (
+              <div className="flex-1 flex overflow-hidden min-h-0">
+                {/* Image viewer with Ctrl+Wheel zoom */}
+                <div
+                  ref={vlmViewerRef}
+                  className="flex-1 flex items-center justify-center overflow-hidden bg-[#2C2C2C] p-4 relative"
+                  style={{ cursor: isVlmDragging ? 'grabbing' : 'grab' }}
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    setIsVlmDragging(true);
+                    setVlmDragStart({ x: e.clientX - vlmPan.x, y: e.clientY - vlmPan.y });
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                  }}
+                  onPointerMove={(e) => {
+                    if (!isVlmDragging) return;
+                    setVlmPan({ x: e.clientX - vlmDragStart.x, y: e.clientY - vlmDragStart.y });
+                  }}
+                  onPointerUp={(e) => {
+                    setIsVlmDragging(false);
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  }}
+                  onPointerCancel={(e) => {
+                    setIsVlmDragging(false);
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  }}
+                >
+                  <img
+                    src={imageUrl}
+                    alt={currentImageName}
+                    draggable={false}
+                    className="object-contain rounded shadow-lg transition-transform duration-100"
+                    style={{
+                      maxHeight: vlmZoom === 1 ? '85vh' : undefined,
+                      maxWidth: vlmZoom === 1 ? '100%' : undefined,
+                      transform: `translate(${vlmPan.x}px, ${vlmPan.y}px) scale(${vlmZoom})`,
+                      transformOrigin: vlmTransformOrigin,
+                    }}
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      onImageLoaded(img.naturalWidth, img.naturalHeight);
+                    }}
+                    onDoubleClick={(e) => {
+                      if (vlmZoom >= 4.9) {
+                        setVlmZoom(1);
+                        setVlmTransformOrigin('center center');
+                      } else {
+                        const x = (e.nativeEvent.offsetX / e.currentTarget.offsetWidth) * 100;
+                        const y = (e.nativeEvent.offsetY / e.currentTarget.offsetHeight) * 100;
+                        setVlmTransformOrigin(`${x}% ${y}%`);
+                        setVlmZoom(prev => Math.min(5, Math.round((prev + 0.1) * 10) / 10));
+                      }
+                    }}
+                  />
+                  {/* Zoom indicator */}
+                  {vlmZoom !== 1 && (
+                    <div className="absolute bottom-3 left-3 bg-black/60 text-white text-[11px] font-mono px-2 py-1 rounded pointer-events-none">
+                      {Math.round(vlmZoom * 100)}% &nbsp;
+                      <span className="text-gray-300 text-[10px]">dbl-click to reset</span>
+                    </div>
+                  )}
+                  {/* Zoom hint (shown at 100%) */}
+                  {vlmZoom === 1 && (
+                    <div className="absolute bottom-3 left-3 bg-black/40 text-gray-300 text-[10px] px-2 py-1 rounded pointer-events-none select-none">
+                      Ctrl+Scroll to zoom
+                    </div>
+                  )}
+                </div>
+                {/* VLM annotation panel resizer */}
+                {isRightSidebarOpen && (
+                  <div 
+                    onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebar(true); }}
+                    className={`w-1 cursor-col-resize shrink-0 transition-colors border-l border-gray-300 ${isResizingSidebar ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-300'}`}
+                    style={{ zIndex: 50 }}
+                  />
+                )}
+                {/* VLM annotation panel */}
+                <div 
+                  className="relative shrink-0 border-l border-gray-200 flex flex-col overflow-hidden transition-all duration-200 bg-white"
+                  style={{ width: isRightSidebarOpen ? sidebarWidth : 0 }}
+                >
+                  <button
+                    onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+                    className="absolute -left-4 top-1/2 -translate-y-1/2 w-4 h-16 bg-white border border-gray-300 rounded-l-md flex items-center justify-center hover:bg-gray-50 z-50 text-gray-500 shadow"
+                    style={{ left: '-16px' }}
+                    title="Toggle Right Sidebar"
+                  >
+                    {isRightSidebarOpen ? (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                    )}
+                  </button>
+                  
+                  <div className={`flex flex-col h-full w-full ${!isRightSidebarOpen ? 'hidden' : ''}`}>
+                    <VLMPanel
+                      classes={classes}
+                      values={vlmValues}
+                      onChange={(code, val) => setVlmValues(prev => ({ ...prev, [code]: val }))}
+                      onNext={nextImage}
+                      onPrev={prevImage}
+                    />
+                    {/* VLM nav bar */}
+                    <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-4 py-2 flex items-center justify-between gap-2">
+                      <button
+                        onClick={prevImage}
+                        disabled={!canPrev}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded border transition-colors ${canPrev ? 'bg-white border-gray-300 hover:bg-gray-100 text-black' : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'}`}
+                      >
+                        ← Prev
+                      </button>
+                      <span className="text-xs text-gray-500 font-medium">{currentIndex + 1} / {imageNames.length}</span>
+                      <button
+                        onClick={skipImage}
+                        disabled={!canNext}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded border transition-colors ${canNext ? 'bg-white border-yellow-300 hover:bg-yellow-50 text-yellow-700' : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'}`}
+                      >
+                        Skip
+                      </button>
+                      <button
+                        onClick={nextImage}
+                        disabled={!canNext}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded border transition-colors ${canNext ? 'bg-blue-600 border-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'}`}
+                      >
+                        Save & Next →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : (
               <AnnotatorCanvas
                 projectId={projectId}
@@ -1075,7 +1287,7 @@ export default function AnnotatePage() {
         </div>
 
         {/* Resizer Handle */}
-        {projectType !== 'Ocr' && isRightSidebarOpen && (
+        {projectType !== 'Ocr' && projectType !== 'VLM' && isRightSidebarOpen && (
           <div 
             onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebar(true); }}
             className={`w-1 cursor-col-resize shrink-0 transition-colors border-l border-gray-300 ${isResizingSidebar ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-300'}`}
@@ -1084,7 +1296,7 @@ export default function AnnotatePage() {
         )}
 
         {/* Right panel wrapper (Classes / OCR Only) */}
-        <div className={`relative flex flex-col h-full shrink-0 bg-white transition-all duration-200 ${(projectType === 'Ocr' && !ocrEnableClass) ? 'hidden' : ''}`} style={{ width: isRightSidebarOpen ? sidebarWidth : 0 }}>
+        <div className={`relative flex flex-col h-full shrink-0 bg-white transition-all duration-200 ${(projectType === 'VLM' || (projectType === 'Ocr' && !ocrEnableClass)) ? 'hidden' : ''}`} style={{ width: isRightSidebarOpen ? sidebarWidth : 0 }}>
           <button
             onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
             className="absolute -left-4 top-1/2 -translate-y-1/2 w-4 h-16 bg-white border border-gray-300 rounded-l-md flex items-center justify-center hover:bg-gray-50 z-50 text-gray-500 shadow"

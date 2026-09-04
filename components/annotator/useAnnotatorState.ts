@@ -17,6 +17,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
     
     const [labels, setLabels] = useState<any[]>([]);
     const [ocrValue, setOcrValue] = useState('');
+    const [vlmValues, setVlmValues] = useState<Record<number, string>>({}); // class_code -> text answer
     const [deskewAngle, setDeskewAngle] = useState(0);
     const [deskewCrop, setDeskewCrop] = useState<{x: number, y: number, w: number, h: number} | null>(null);
     const [prelabelStatus, setPrelabelStatus] = useState<string | null>(null);
@@ -56,6 +57,10 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
     const [boxImageDefaultClass, setBoxImageDefaultClass] = useState<number | null>(null);
     const [boxImageDefaultWidth, setBoxImageDefaultWidth] = useState<number>(150);
     const [boxImageDefaultHeight, setBoxImageDefaultHeight] = useState<number>(150);
+
+    const [maintainPrevious, setMaintainPrevious] = useState(false);
+    const maintainPreviousRef = useRef(maintainPrevious);
+    useEffect(() => { maintainPreviousRef.current = maintainPrevious; }, [maintainPrevious]);
 
     const fetchBoxImages = useCallback(async () => {
         try {
@@ -103,66 +108,73 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                 const data = res.data;
                 
                 if (data.type === 'Yolo' || data.type === 'Yolo OBB' || data.type === 'KIE') {
-                    let initialLabels: any[] = [];
                     if (data.prelabels && data.prelabels.length > 0 && data.labels.length === 0) {
                         setOriginalPrelabels(data.prelabels);
-                        initialLabels = data.prelabels;
                         setPrelabelStatus('Loaded from prelabels');
-                    } else {
-                        initialLabels = data.labels || [];
+                        setLabels(data.prelabels);
+                    } else if (data.labels && data.labels.length > 0) {
                         setOriginalPrelabels([]);
                         setPrelabelStatus(null);
-                    }
-
-                    // Auto-add random box image if enabled & no box image exists yet
-                    if (autoAddBoxImageEnabled && boxImageNames.length > 0 && !initialLabels.some(l => l.box_image)) {
-                        const randomImg = boxImageNames[Math.floor(Math.random() * boxImageNames.length)];
-                        const cx = 0.2 + Math.random() * 0.6;
-                        const cy = 0.2 + Math.random() * 0.6;
-                        const imgW = imageDimensions?.width || 1000;
-                        const imgH = imageDimensions?.height || 1000;
-                        const w = Math.max(0.02, Math.min(0.9, boxImageDefaultWidth / imgW));
-                        const h = Math.max(0.02, Math.min(0.9, boxImageDefaultHeight / imgH));
-                        const targetClass = boxImageDefaultClass !== null ? boxImageDefaultClass : (activeClassCode !== null ? activeClassCode : (classes[0]?.code ?? 0));
-
-                        let coordsStr = '';
-                        if (data.type === 'Yolo OBB') {
-                            const angle = Math.random() * Math.PI * 2;
-                            const cosA = Math.cos(angle);
-                            const sinA = Math.sin(angle);
-                            const hw = (w * imgW) / 2;
-                            const hh = (h * imgH) / 2;
-                            const centerPxX = cx * imgW;
-                            const centerPxY = cy * imgH;
-
-                            const corners = [
-                                { x: -hw, y: -hh },
-                                { x: hw, y: -hh },
-                                { x: hw, y: hh },
-                                { x: -hw, y: hh }
-                            ].map(pt => ({
-                                x: (centerPxX + pt.x * cosA - pt.y * sinA) / imgW,
-                                y: (centerPxY + pt.x * sinA + pt.y * cosA) / imgH
-                            }));
-                            coordsStr = corners.map(pt => `${pt.x} ${pt.y}`).join(' ');
+                        setLabels(data.labels);
+                    } else {
+                        if (maintainPreviousRef.current) {
+                            setPrelabelStatus('Maintained from previous');
                         } else {
-                            coordsStr = `${cx} ${cy} ${w} ${h}`;
+                            let initialLabels: any[] = [];
+                            setOriginalPrelabels([]);
+                            setPrelabelStatus(null);
+                            
+                            // Auto-add random box image if enabled & no box image exists yet
+                            if (autoAddBoxImageEnabled && boxImageNames.length > 0) {
+                                const randomImg = boxImageNames[Math.floor(Math.random() * boxImageNames.length)];
+                                const cx = 0.2 + Math.random() * 0.6;
+                                const cy = 0.2 + Math.random() * 0.6;
+                                const imgW = imageDimensions?.width || 1000;
+                                const imgH = imageDimensions?.height || 1000;
+                                const w = Math.max(0.02, Math.min(0.9, boxImageDefaultWidth / imgW));
+                                const h = Math.max(0.02, Math.min(0.9, boxImageDefaultHeight / imgH));
+                                const targetClass = boxImageDefaultClass !== null ? boxImageDefaultClass : (activeClassCode !== null ? activeClassCode : (classes[0]?.code ?? 0));
+
+                                let coordsStr = '';
+                                if (data.type === 'Yolo OBB') {
+                                    const angle = Math.random() * Math.PI * 2;
+                                    const cosA = Math.cos(angle);
+                                    const sinA = Math.sin(angle);
+                                    const hw = (w * imgW) / 2;
+                                    const hh = (h * imgH) / 2;
+                                    const centerPxX = cx * imgW;
+                                    const centerPxY = cy * imgH;
+
+                                    const corners = [
+                                        { x: -hw, y: -hh },
+                                        { x: hw, y: -hh },
+                                        { x: hw, y: hh },
+                                        { x: -hw, y: hh }
+                                    ].map(pt => ({
+                                        x: (centerPxX + pt.x * cosA - pt.y * sinA) / imgW,
+                                        y: (centerPxY + pt.x * sinA + pt.y * cosA) / imgH
+                                    }));
+                                    coordsStr = corners.map(pt => `${pt.x} ${pt.y}`).join(' ');
+                                } else {
+                                    coordsStr = `${cx} ${cy} ${w} ${h}`;
+                                }
+
+                                initialLabels = [{
+                                    class_code: targetClass,
+                                    coordinates: coordsStr,
+                                    box_image: randomImg
+                                }];
+                            }
+
+                            if (autoPredictEnabledRef.current) {
+                                shouldAutoPredict = true;
+                            }
+                            
+                            setLabels(initialLabels);
                         }
-
-                        initialLabels = [...initialLabels, {
-                            class_code: targetClass,
-                            coordinates: coordsStr,
-                            box_image: randomImg
-                        }];
                     }
-
-                    if (data.labels && data.labels.length === 0 && autoPredictEnabledRef.current) {
-                        shouldAutoPredict = true;
-                    }
-                    
-                    setLabels(initialLabels);
                 } else if (data.type === 'Ocr') {
-                    let val = '';
+                    let val: string | null = null;
                     if (data.label !== null) {
                         val = data.label;
                         setPrelabelStatus(null);
@@ -178,25 +190,38 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                         }
                         if (autoPredictEnabledRef.current) shouldAutoPredict = true;
                     } else {
-                        val = '';
-                        setPrelabelStatus(null);
-                        if (classes.length > 0) {
-                            setActiveClassCode(classes[0].code);
+                        if (maintainPreviousRef.current) {
+                            setPrelabelStatus('Maintained from previous');
                         } else {
-                            setActiveClassCode(null);
+                            val = '';
+                            setPrelabelStatus(null);
+                            if (classes.length > 0) {
+                                setActiveClassCode(classes[0].code);
+                            } else {
+                                setActiveClassCode(null);
+                            }
+                            if (autoPredictEnabledRef.current) shouldAutoPredict = true;
                         }
-                        if (autoPredictEnabledRef.current) shouldAutoPredict = true;
                     }
-                    if (data.label === null && prefixEnabled && prefixValue && !val.startsWith(prefixValue)) {
-                        val = prefixValue + val;
+                    
+                    if (val !== null) {
+                        if (data.label === null && prefixEnabled && prefixValue && !val.startsWith(prefixValue)) {
+                            val = prefixValue + val;
+                        }
+                        setOcrValue(val);
                     }
-                    setOcrValue(val);
                 } else if (data.type === 'Classification') {
                     if (data.label !== null) setActiveClassCode(data.label);
                     else if (data.prelabel !== null) {
                         setActiveClassCode(data.prelabel);
                         setPrelabelStatus('Loaded from prelabel');
-                    } else setPrelabelStatus(null);
+                    } else {
+                        if (maintainPreviousRef.current) {
+                            setPrelabelStatus('Maintained from previous');
+                        } else {
+                            setPrelabelStatus(null);
+                        }
+                    }
                 } else if (data.type === 'Deskewer') {
                     if (data.label !== null) {
                         setDeskewAngle(data.label);
@@ -217,24 +242,50 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                         }
                         setPrelabelStatus('Loaded from prelabel');
                     } else {
-                        setDeskewAngle(0);
-                        setDeskewCrop(null);
-                        setPrelabelStatus(null);
+                        if (maintainPreviousRef.current) {
+                            setPrelabelStatus('Maintained from previous');
+                        } else {
+                            setDeskewAngle(0);
+                            setDeskewCrop(null);
+                            setPrelabelStatus(null);
+                        }
                     }
                 } else if (data.type === 'NER') {
-                    let initialLabels: any[] = [];
                     if (data.prelabels && data.prelabels.length > 0 && data.labels.length === 0) {
-                        initialLabels = data.prelabels;
                         setPrelabelStatus('Loaded from prelabels');
-                    } else {
-                        initialLabels = data.labels || [];
+                        setLabels(data.prelabels);
+                    } else if (data.labels && data.labels.length > 0) {
                         setPrelabelStatus(null);
+                        setLabels(data.labels);
+                    } else {
+                        if (maintainPreviousRef.current) {
+                            setPrelabelStatus('Maintained from previous');
+                        } else {
+                            setPrelabelStatus(null);
+                            setLabels([]);
+                        }
                     }
-                    setLabels(initialLabels);
+                } else if (data.type === 'VLM') {
+                    if (data.labels && data.labels.length > 0) {
+                        const valMap: Record<number, string> = {};
+                        for (const lbl of (data.labels || [])) {
+                            valMap[lbl.class_code] = lbl.text_value;
+                        }
+                        setVlmValues(valMap);
+                        setPrelabelStatus(null);
+                    } else {
+                        if (maintainPreviousRef.current) {
+                            setPrelabelStatus('Maintained from previous');
+                        } else {
+                            setVlmValues({});
+                            setPrelabelStatus(null);
+                        }
+                    }
                 }
             } catch (err) {
                 console.error(err);
             }
+
 
             if (shouldAutoPredict) {
                 try {
@@ -483,6 +534,14 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                     file_name: currentImageName,
                     labels
                 });
+            } else if (projectType === 'VLM') {
+                const vlmLabels = Object.entries(vlmValues)
+                    .filter(([, text]) => text.trim() !== '')
+                    .map(([code, text]) => ({ class_code: Number(code), text_value: text }));
+                await api.post(`/projects/${projectId}/labels/vlm`, {
+                    img_name: currentImageName,
+                    labels: vlmLabels
+                });
             }
             showToast('Saved', 'success');
             setPrelabelStatus(null);
@@ -504,6 +563,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
             setCurrentIndex(currentIndex + 1);
             setSelectedLabelIndices([]);
             setImageDimensions(null);
+            if (!maintainPreviousRef.current) setVlmValues({});
         } else {
              showToast(`Reached end of ${projectType === 'NER' ? 'texts' : 'images'}`, 'success');
         }
@@ -516,6 +576,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
             setCurrentIndex(currentIndex - 1);
             setSelectedLabelIndices([]);
             setImageDimensions(null);
+            if (!maintainPreviousRef.current) setVlmValues({});
         }
     };
 
@@ -533,6 +594,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
             setCurrentIndex(currentIndex + 1);
             setSelectedLabelIndices([]);
             setImageDimensions(null);
+            if (!maintainPreviousRef.current) setVlmValues({});
         } else {
              showToast(`Reached end of ${projectType === 'NER' ? 'texts' : 'images'}`, 'success');
         }
@@ -552,10 +614,12 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
                 setCurrentIndex(currentIndex + 1);
                 setSelectedLabelIndices([]);
                 setImageDimensions(null);
+                if (!maintainPreviousRef.current) setVlmValues({});
             } else if (currentIndex > 0) {
                 setCurrentIndex(currentIndex - 1);
                 setSelectedLabelIndices([]);
                 setImageDimensions(null);
+                if (!maintainPreviousRef.current) setVlmValues({});
             } else {
                 showToast(`No more ${projectType === 'NER' ? 'texts' : 'images'}`, 'success');
             }
@@ -576,6 +640,7 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
             setCurrentIndex(targetIndex);
             setSelectedLabelIndices([]);
             setImageDimensions(null);
+            if (!maintainPreviousRef.current) setVlmValues({});
         } else {
             showToast(`Invalid ${projectType === 'NER' ? 'text file' : 'image'} index`, 'error');
         }
@@ -769,6 +834,8 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         setSelectedLabelIndices,
         ocrValue,
         setOcrValue,
+        vlmValues,
+        setVlmValues,
         deskewAngle,
         setDeskewAngle,
         deskewCrop,
@@ -820,6 +887,8 @@ export function useAnnotatorState(projectId: number, imageNames: string[], initi
         setOcrConf,
         iouThresh,
         setIouThresh,
+        maintainPrevious,
+        setMaintainPrevious
     };
 }
 
